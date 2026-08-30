@@ -31,10 +31,10 @@ sudo zypper install fd fzf python3-gobject
 
 ## Installation
 
-Clone the repository and run the install script:
+Download or clone the repo and run the install script:
 
 ```bash
-git clone https://github.com/your-username/kseek.git
+git clone https://github.com/vidhan31/kseek.git
 cd kseek
 ./install.sh
 ```
