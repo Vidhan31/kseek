@@ -77,8 +77,7 @@ if command -v systemctl &> /dev/null; then
     systemctl --user daemon-reload || true
 fi
 
-echo "==> Reloading KRunner..."
-restart_krunner || true
-
-echo "==> Installation complete! Open KRunner (Alt+Space) and search using 'f <filename>'."
-echo "    Tip: To enable debug logs, set KSEEK_DEBUG=1 in ~/.config/systemd/user/plasma-runner-kseek.service"
+echo "==> Installation complete."
+echo "    1. Ensure kseek is enabled in System Settings > Search > Plasma Search."
+echo "    2. Configure file exclusions in ~/.config/fd/ignore if you want to skip directories like node_modules."
+echo "    3. Open KRunner (Alt+Space) and search using 'f <filename>'."

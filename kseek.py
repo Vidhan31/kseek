@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
-"""kseek: KRunner D-Bus runner that pipes `fd` into `fzf` for fast fuzzy file search.
-
-Refactored for KDE Plasma 6 (KF6) with:
-- Native GDBus (gi.repository.Gio) eliminating legacy dbus-python
-- Asynchronous DBus replies without per-keystroke thread churn
-- Atomic process group cancellation (instant kill on superseded keystrokes)
-- Myers v2 path-optimized fuzzy matching (`fzf --scheme=path`)
-- Wayland XDG Activation Token support for smooth window focusing
-- Zero-I/O LRU MIME & icon caching
-- Drag-and-drop and clipboard URL metadata support (`urls` variant)
-"""
+"""KRunner D-Bus runner that pipes fd into fzf for fast fuzzy file search."""
 import logging
 import mimetypes
 import os
@@ -101,7 +91,6 @@ INTROSPECTION_XML = """<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object I
 
 @lru_cache(maxsize=4096)
 def _icon_for_extension(ext: str) -> str:
-    """Fast, zero-I/O icon lookup based on file extension using system MIME info."""
     if not ext:
         return "application-octet-stream"
     try:
@@ -127,7 +116,6 @@ def _icon_for_extension(ext: str) -> str:
 
 
 def resolve_icon(file_path: str, is_dir: bool) -> str:
-    """Resolves FreeDesktop icon name without synchronous disk I/O."""
     if is_dir:
         return "inode-directory"
 
@@ -190,7 +178,6 @@ class KSeekRunner:
         return features
 
     def cancel_active_search(self):
-        """Immediately terminates active subprocesses via process group SIGKILL."""
         with self._lock:
             procs = self._active_procs
             self._active_procs = None
@@ -209,7 +196,6 @@ class KSeekRunner:
                         pass
 
     def start_dbus(self):
-        """Registers the D-Bus service and exports the org.kde.krunner1 object."""
         self.session_bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 
         node_info = Gio.DBusNodeInfo.new_for_xml(INTROSPECTION_XML)
@@ -223,7 +209,6 @@ class KSeekRunner:
             None,
         )
 
-        # Request well-known bus name
         Gio.bus_own_name_on_connection(
             self.session_bus,
             BUS_NAME,
@@ -267,7 +252,6 @@ class KSeekRunner:
 
                 self.cancel_active_search()
 
-                # Dispatch background search thread so the GLib event loop is never blocked
                 threading.Thread(
                     target=self._search_worker,
                     args=(query, req_id, invocation),
@@ -324,23 +308,17 @@ class KSeekRunner:
 
         use_null_io = self.fzf_features["read0"] and self.fzf_features["print0"]
 
-        # Build fd command: traverse directory tree relative to search_root
         fd_cmd = [
             self.fd_bin,
             "--base-directory",
             self.search_root,
-            "--hidden",
-            "--exclude",
-            ".git",
-            "--exclude",
-            "node_modules",
-            "--exclude",
-            ".cache",
         ]
+        extra_fd_args = os.environ.get("KSEEK_FD_ARGS")
+        if extra_fd_args:
+            fd_cmd.extend(extra_fd_args.split())
         if use_null_io:
             fd_cmd.append("--print0")
 
-        # Build fzf command: fuzzy filter candidates with Myers v2 path scheme
         fzf_cmd = [self.fzf_bin, f"--filter={search_term}"]
         if use_null_io:
             fzf_cmd += ["--read0", "--print0"]
@@ -356,7 +334,6 @@ class KSeekRunner:
         fd_proc = None
         fzf_proc = None
         try:
-            # Spawn pipeline inside its own process group for atomic signal termination
             fd_proc = subprocess.Popen(
                 fd_cmd,
                 stdout=subprocess.PIPE,
@@ -373,12 +350,10 @@ class KSeekRunner:
                 cwd=self.search_root,
                 start_new_session=True,
             )
-            # Allow fd to receive SIGPIPE if fzf exits early
             fd_proc.stdout.close()
 
             with self._lock:
                 if req_id != self._current_request_id:
-                    # Superseded before we even started
                     try:
                         os.killpg(os.getpgid(fd_proc.pid), signal.SIGKILL)
                     except Exception:
@@ -451,7 +426,6 @@ class KSeekRunner:
         def do_reply():
             with self._lock:
                 if req_id != self._current_request_id:
-                    # Ignore outdated query results
                     try:
                         invocation.return_value(GLib.Variant("(a(sssida{sv}))", ([],)))
                     except Exception:
@@ -459,7 +433,6 @@ class KSeekRunner:
                     return
 
             try:
-                # Type signature: a(sssida{sv})
                 invocation.return_value(GLib.Variant("(a(sssida{sv}))", (matches,)))
             except Exception:
                 log.exception("Failed sending D-Bus Match reply for request [%d]", req_id)
@@ -476,13 +449,8 @@ class KSeekRunner:
             return None
 
         icon = resolve_icon(full_path, is_dir)
-
-        # Relevance in [0.5, 1.0] for top items
         relevance = 1.0 if total <= 1 else (1.0 - 0.5 * (rank / (total - 1)))
-
-        # Category relevance: 70 corresponds to High in KF6 CategoryRelevance
         category_relevance = 70
-
         file_uri = f"file://{quote(os.path.abspath(full_path))}"
 
         props = {
@@ -494,12 +462,12 @@ class KSeekRunner:
         }
 
         return (
-            full_path,  # id (s)
-            file_name,  # text (s)
-            icon,  # iconName (s)
-            category_relevance,  # category relevance / type (i)
-            relevance,  # relevance (d)
-            props,  # properties (a{sv})
+            full_path,
+            file_name,
+            icon,
+            category_relevance,
+            relevance,
+            props,
         )
 
     def _error_match(self, message: str):
@@ -563,7 +531,6 @@ class KSeekRunner:
         file_uri = f"file://{quote(os.path.abspath(path))}"
         startup_id = self.activation_token or ""
         try:
-            # Use org.freedesktop.FileManager1 ShowItems method
             self.session_bus.call_sync(
                 "org.freedesktop.FileManager1",
                 "/org/freedesktop/FileManager1",
@@ -588,7 +555,6 @@ class KSeekRunner:
             subprocess.Popen(["xdg-open", folder], start_new_session=True)
 
     def _copy_to_clipboard(self, text: str):
-        # 1. Native KDE Klipper DBus
         try:
             self.session_bus.call_sync(
                 "org.kde.klipper",
@@ -606,7 +572,6 @@ class KSeekRunner:
         except Exception:
             log.debug("Klipper D-Bus unavailable; trying CLI tools", exc_info=True)
 
-        # 2. CLI fallbacks for Wayland and X11
         for tool, args in (("wl-copy", []), ("xclip", ["-selection", "clipboard"]), ("xsel", ["--clipboard"])):
             tool_path = shutil.which(tool)
             if not tool_path:

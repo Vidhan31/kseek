@@ -45,7 +45,13 @@ The installer copies:
 - D-Bus activation files to `~/.local/share/dbus-1/services/`
 - A systemd user unit to `~/.config/systemd/user/`
 
-It then reloads KRunner so the runner becomes available right away.
+### Enable the plugin in Plasma settings
+
+After running `install.sh`, open System Settings and check that the plugin is active:
+
+1. Open **System Settings** and go to **Search** > **Plasma Search**.
+2. Scroll to the **kseek** entry and ensure the checkbox is checked.
+3. If KRunner does not immediately pick it up, restart KRunner with `kquitapp6 krunner` or log out and back in.
 
 ## Usage
 
@@ -66,6 +72,14 @@ Selecting a search match supports several actions:
 - **Open Terminal Here**: Opens your default terminal in the containing directory.
 - **Drag and Drop**: You can drag search results straight out of KRunner into other applications.
 
+## Warning: Tool configuration
+
+kseek does not hardcode exclusions like `node_modules` or flags like `--hidden`. You need to set your own ignore rules and search options.
+
+- Add folder exclusions such as `node_modules` or `build` to `~/.config/fd/ignore`.
+- fd skips hidden files by default. If you want hidden files or symlinks included, set `KSEEK_FD_ARGS="--hidden --follow"` in your environment or service file.
+- fzf runs in filter mode (`--filter`). Terminal UI flags like colors or preview windows in your shell files do not apply here.
+
 ## Configuration
 
 You can customize runtime behavior by setting environment variables in `~/.config/systemd/user/plasma-runner-kseek.service` or your shell environment:
@@ -75,6 +89,7 @@ You can customize runtime behavior by setting environment variables in `~/.confi
 | `KSEEK_ROOT` | `$HOME` | Root directory for file searches. |
 | `KSEEK_MAX_RESULTS` | `20` | Maximum number of results to display. |
 | `KSEEK_TIMEOUT` | `2.5` | Search timeout in seconds before canceling a slow query. |
+| `KSEEK_FD_ARGS` | `""` | Extra arguments passed to `fd` (e.g. `"--hidden --follow"`). |
 | `KSEEK_DEBUG` | `0` | Set to `1` to output verbose logs. |
 
 After modifying the service file, reload systemd:

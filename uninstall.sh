@@ -31,13 +31,11 @@ if command -v systemctl &> /dev/null; then
     systemctl --user disable plasma-runner-kseek.service 2>/dev/null || true
 fi
 
-# Clean up new kseek files
 rm -rf "$INSTALL_DIR"
 rm -f "$KRUNNER_PLUGIN_DIR/plasma-runner-kseek.desktop"
 rm -f "$DBUS_SERVICE_DIR/org.kde.krunner.kseek.service"
 rm -f "$SYSTEMD_USER_DIR/plasma-runner-kseek.service"
 
-# Also clean up any legacy krunner-fzf-fd files if present
 rm -rf "$XDG_DATA_HOME/krunner-fzf-fd"
 rm -f "$KRUNNER_PLUGIN_DIR/plasma-runner-fzf-fd.desktop"
 rm -f "$DBUS_SERVICE_DIR/org.kde.krunner.fzf_fd.service"

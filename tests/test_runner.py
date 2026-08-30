@@ -7,7 +7,6 @@ import tempfile
 import time
 import unittest
 
-# Add project root to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import gi
@@ -27,12 +26,10 @@ from kseek import (
 class TestKSeek(unittest.TestCase):
     def setUp(self):
         self.test_dir = tempfile.mkdtemp(prefix="kseek_test_")
-        # Create a rich hierarchy of test files and directories
         os.makedirs(os.path.join(self.test_dir, "src", "nested"), exist_ok=True)
         os.makedirs(os.path.join(self.test_dir, "docs"), exist_ok=True)
         os.makedirs(os.path.join(self.test_dir, ".git"), exist_ok=True)
 
-        # Standard and edge-case filenames
         self.test_files = [
             os.path.join(self.test_dir, "main.py"),
             os.path.join(self.test_dir, "README.md"),
@@ -40,7 +37,8 @@ class TestKSeek(unittest.TestCase):
             os.path.join(self.test_dir, "src", "nested", "C++_advanced.cpp"),
             os.path.join(self.test_dir, "docs", "report [2024].pdf"),
             os.path.join(self.test_dir, "docs", "spaced name file.txt"),
-            os.path.join(self.test_dir, ".git", "config"),  # Should be excluded
+            os.path.join(self.test_dir, ".hidden_config"),
+            os.path.join(self.test_dir, ".git", "config"),
         ]
         for f in self.test_files:
             with open(f, "w") as fp:
@@ -95,33 +93,27 @@ class TestKSeek(unittest.TestCase):
         self.assertIsNone(QUERY_RE.match("f"))
 
     def test_icon_resolution(self):
-        """Verify zero-I/O MIME icon caching and directory icon mapping."""
-        # Directory
+        """Verify MIME icon caching and directory icon mapping."""
         self.assertEqual(resolve_icon(self.test_dir, is_dir=True), "inode-directory")
 
-        # Python file
         py_icon = resolve_icon("test.py", is_dir=False)
         self.assertTrue("python" in py_icon or "text" in py_icon or "code" in py_icon)
 
-        # PDF file
         pdf_icon = resolve_icon("document.pdf", is_dir=False)
         self.assertTrue("pdf" in pdf_icon or "document" in pdf_icon or "application" in pdf_icon)
 
-        # C++ file
         cpp_icon = resolve_icon("test.cpp", is_dir=False)
         self.assertTrue("c" in cpp_icon or "text" in cpp_icon)
 
-        # Verify caching
         icon1 = _icon_for_extension(".py")
         icon2 = _icon_for_extension(".py")
         self.assertEqual(icon1, icon2)
 
     def test_search_fuzzy_and_regex_safety(self):
-        """Test search pipeline on edge cases (fuzzy matching, regex chars, special symbols)."""
+        """Test search pipeline on edge cases."""
         if not self.runner.fd_bin or not self.runner.fzf_bin:
             self.skipTest("fd or fzf not installed")
 
-        # 1. Fuzzy search test (e.g. acronym 'ksk' should match 'kseek.py')
         self.runner._current_request_id = 1
         results = []
         invocation_mock = _MockInvocation(lambda res: results.extend(res))
@@ -133,7 +125,6 @@ class TestKSeek(unittest.TestCase):
         match_texts = [r[1] for r in results]
         self.assertIn("kseek.py", match_texts)
 
-        # 2. Regex special character query: 'f C++' should NOT crash and should find C++_advanced.cpp
         self.runner._current_request_id = 2
         results_regex = []
         inv_regex = _MockInvocation(lambda res: results_regex.extend(res))
@@ -143,7 +134,6 @@ class TestKSeek(unittest.TestCase):
         self.assertTrue(len(results_regex) > 0, "Query 'C++' should match C++_advanced.cpp")
         self.assertIn("C++_advanced.cpp", [r[1] for r in results_regex])
 
-        # 3. Bracketed query: 'f 2024'
         self.runner._current_request_id = 3
         results_bracket = []
         inv_bracket = _MockInvocation(lambda res: results_bracket.extend(res))
@@ -153,7 +143,6 @@ class TestKSeek(unittest.TestCase):
         self.assertTrue(len(results_bracket) > 0)
         self.assertIn("report [2024].pdf", [r[1] for r in results_bracket])
 
-        # 4. Hidden .git folder should be excluded
         git_matches = [r[1] for r in results if r[1] == "config"]
         self.assertEqual(len(git_matches), 0, ".git folder should be excluded")
 
@@ -167,22 +156,18 @@ class TestKSeek(unittest.TestCase):
         inv1 = _MockInvocation(lambda res: res_req1.extend(res))
         inv2 = _MockInvocation(lambda res: res_req2.extend(res))
 
-        # Launch request 1
         self.runner._current_request_id = 1
         self.runner._search_worker("f main", 1, inv1)
 
-        # Immediately supersede with request 2
         self.runner._current_request_id = 2
         self.runner.cancel_active_search()
         self.runner._search_worker("f README", 2, inv2)
 
         self._wait_for_results(res_req2)
 
-        # Request 2 should have results matching README
         self.assertTrue(len(res_req2) > 0)
         self.assertIn("README.md", [r[1] for r in res_req2])
 
-        # If Request 1 dispatched any response, it must be empty (discarded)
         for r in res_req1:
             self.assertEqual(len(r), 0)
 
@@ -209,10 +194,9 @@ class TestKSeek(unittest.TestCase):
         self.assertTrue(os.path.isabs(match_id))
         self.assertEqual(text, "kseek.py")
         self.assertIsInstance(icon, str)
-        self.assertEqual(cat_rel, 70)  # High category relevance in KF6
+        self.assertEqual(cat_rel, 70)
         self.assertEqual(rel, 1.0)
 
-        # Validate properties variant dictionary
         self.assertIn("subtext", props)
         self.assertIn("category", props)
         self.assertIn("urls", props)
@@ -235,6 +219,30 @@ class TestKSeek(unittest.TestCase):
         ctx = self.runner._create_app_launch_context()
         self.assertIsNotNone(ctx)
         self.assertEqual(self.runner.activation_token, token)
+
+    def test_fd_custom_args_support(self):
+        """Verify KSEEK_FD_ARGS allows enabling hidden files or custom options."""
+        if not self.runner.fd_bin or not self.runner.fzf_bin:
+            self.skipTest("fd or fzf not installed")
+
+        self.runner._current_request_id = 98
+        results_default = []
+        inv_default = _MockInvocation(lambda res: results_default.extend(res))
+        self.runner._search_worker("f hidden_config", 98, inv_default)
+        self._wait_for_results(results_default)
+        self.assertEqual(len(results_default), 0, "Hidden files should not be found by default")
+
+        os.environ["KSEEK_FD_ARGS"] = "--hidden"
+        try:
+            self.runner._current_request_id = 99
+            results = []
+            inv = _MockInvocation(lambda res: results.extend(res))
+            self.runner._search_worker("f hidden_config", 99, inv)
+            self._wait_for_results(results)
+            match_texts = [r[1] for r in results]
+            self.assertIn(".hidden_config", match_texts)
+        finally:
+            os.environ.pop("KSEEK_FD_ARGS", None)
 
 
 class _MockInvocation:
