@@ -1,0 +1,14 @@
+[Unit]
+Description=kseek File Search Runner for KRunner
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=dbus
+BusName=org.kde.krunner.kseek
+ExecStart=@INSTALL_DIR@/kseek.py
+Restart=on-failure
+Slice=app.slice
+
+[Install]
+WantedBy=graphical-session.target
