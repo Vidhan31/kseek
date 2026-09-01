@@ -1,18 +1,20 @@
 [Desktop Entry]
 Name=kseek
 Comment=Fuzzy search files and directories using fd and fzf
+X-KDE-ServiceTypes=Plasma/Runner
 Type=Service
 Icon=edit-find
 X-KDE-PluginInfo-Author=Community
 X-KDE-PluginInfo-Name=kseek
-X-KDE-PluginInfo-Version=2.0
+X-KDE-PluginInfo-Version=2.1.0
 X-KDE-PluginInfo-License=GPL
+X-KDE-PluginInfo-Website=https://store.kde.org/p/2369956
 X-KDE-PluginInfo-EnabledByDefault=true
-X-Plasma-API=DBus2
+X-Plasma-API=DBus
 X-Plasma-DBusRunner-Service=org.kde.krunner.kseek
 X-Plasma-DBusRunner-Path=/kseek
 X-Plasma-Runner-Min-Letter-Count=3
-X-Plasma-Runner-Match-Regex=^f\\s+.+
+X-Plasma-Runner-Match-Regex=^f\s+.+
 X-Plasma-Request-Actions-Once=true
 X-Plasma-Runner-Syntaxes=f :q:
 X-Plasma-Runner-Syntax-Descriptions=Search files and directories via fd + fzf

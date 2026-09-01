@@ -39,23 +39,21 @@ if ! "$FD_BIN" --max-results 1 . "$HOME" &> /dev/null; then
     exit 1
 fi
 
-if ! command -v python3 &> /dev/null; then
-    echo "ERROR: 'python3' is required but not installed." >&2
+if ! command -v cmake &> /dev/null; then
+    echo "ERROR: 'cmake' is required to build kseek." >&2
     exit 1
 fi
 
-if ! python3 -c "import gi; gi.require_version('Gio', '2.0'); gi.require_version('GLib', '2.0'); from gi.repository import Gio, GLib" &> /dev/null; then
-    echo "ERROR: Missing required Python GObject packages (python3-gi / python-gobject)." >&2
-    echo "Install it using your package manager (e.g., apt install python3-gi / pacman -S python-gobject / dnf install python3-gobject)." >&2
-    exit 1
-fi
-
-for f in kseek.py plasma-runner-kseek.desktop org.kde.krunner.kseek.service.in plasma-runner-kseek.service.in; do
+for f in CMakeLists.txt plasma-runner-kseek.desktop org.kde.krunner.kseek.service.in plasma-runner-kseek.service.in; do
     if [[ ! -f "$f" ]]; then
         echo "ERROR: $f not found next to this script. Run install.sh from inside the extracted project directory." >&2
         exit 1
     fi
 done
+
+echo "==> Building kseek (C++20 / Qt 6)..."
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --target kseek
 
 XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
@@ -68,10 +66,10 @@ echo "==> Installing kseek for Plasma 6..."
 
 mkdir -p "$INSTALL_DIR" "$KRUNNER_PLUGIN_DIR" "$DBUS_SERVICE_DIR" "$SYSTEMD_USER_DIR"
 
-install -m 0755 kseek.py "$INSTALL_DIR/kseek.py"
+install -m 0755 build/kseek "$INSTALL_DIR/kseek"
 install -m 0644 plasma-runner-kseek.desktop "$KRUNNER_PLUGIN_DIR/plasma-runner-kseek.desktop"
-sed "s|@INSTALL_DIR@|$INSTALL_DIR|g" org.kde.krunner.kseek.service.in > "$DBUS_SERVICE_DIR/org.kde.krunner.kseek.service"
-sed "s|@INSTALL_DIR@|$INSTALL_DIR|g" plasma-runner-kseek.service.in > "$SYSTEMD_USER_DIR/plasma-runner-kseek.service"
+sed "s|@KSEEK_EXECUTABLE@|$INSTALL_DIR/kseek|g" org.kde.krunner.kseek.service.in > "$DBUS_SERVICE_DIR/org.kde.krunner.kseek.service"
+sed "s|@KSEEK_EXECUTABLE@|$INSTALL_DIR/kseek|g" plasma-runner-kseek.service.in > "$SYSTEMD_USER_DIR/plasma-runner-kseek.service"
 
 if command -v systemctl &> /dev/null; then
     systemctl --user daemon-reload || true

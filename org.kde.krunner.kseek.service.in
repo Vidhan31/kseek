@@ -1,4 +1,4 @@
 [D-BUS Service]
 Name=org.kde.krunner.kseek
-Exec=@INSTALL_DIR@/kseek.py
+Exec=@KSEEK_EXECUTABLE@
 SystemdService=plasma-runner-kseek.service

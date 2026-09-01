@@ -6,7 +6,7 @@ After=graphical-session.target
 [Service]
 Type=dbus
 BusName=org.kde.krunner.kseek
-ExecStart=@INSTALL_DIR@/kseek.py
+ExecStart=@KSEEK_EXECUTABLE@
 Restart=on-failure
 Slice=app.slice
 

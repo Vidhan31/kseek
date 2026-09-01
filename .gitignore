@@ -1,6 +1,53 @@
+# Build artifacts
+build/
+build-*/
+cmake-build-*/
+bin/
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+
+# Qt and Qt Creator
+*.user
+*.user.*
+.qtc_clangd/
+*.qmlc
+*.jsc
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*~
+.clangd/
+.kdev4/
+*.kdev4
+
+# Python legacy caches
 __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
 .coverage
+
+# System and cache files
 .cache/
+.DS_Store
+*.orig
+*.rej
+
