@@ -1,0 +1,25 @@
+# Maintainer: Vidhan Bhatt <heyitsmedevfr@gmail.com>
+pkgname=kseek
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc='Fuzzy file search KRunner plugin using fd + fzf'
+arch=('x86_64')
+url='https://github.com/vidhan31/kseek'
+license=('MIT')
+options=(!debug)
+makedepends=('cmake' 'ninja' 'qt6-base')
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+    cmake -B build -S "$pkgname-$pkgver" -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DBUILD_TESTING=OFF
+    cmake --build build
+}
+
+package() {
+    DESTDIR="$pkgdir" cmake --install build
+    install -Dm644 "$pkgname-$pkgver/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

@@ -1,0 +1,82 @@
+# syntax=docker/dockerfile:1
+
+# ── Stage 1: Build & Test ────────────────────────────────────────────
+FROM ubuntu:24.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    ninja-build \
+    qt6-base-dev \
+    qt6-base-dev-tools \
+    fd-find \
+    fzf \
+    dpkg-dev \
+    debhelper \
+    devscripts \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN ln -s /usr/bin/fdfind /usr/local/bin/fd
+
+WORKDIR /src
+COPY . .
+
+# Build and run the test suite
+RUN cmake -B /build -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_TESTING=ON \
+    && cmake --build /build \
+    && ctest --test-dir /build --output-on-failure
+
+# ── Stage 2: Package .deb ────────────────────────────────────────────
+FROM builder AS packager
+
+WORKDIR /src
+
+# Create the debian/ packaging tree inline
+RUN mkdir -p debian/source \
+    && echo "3.0 (native)" > debian/source/format
+
+RUN printf 'Source: kseek\n\
+Section: utils\n\
+Priority: optional\n\
+Maintainer: Vidhan Bhatt <heyitsmedevfr@gmail.com>\n\
+Build-Depends: debhelper-compat (= 13), cmake (>= 3.25), ninja-build, qt6-base-dev (>= 6.4)\n\
+Standards-Version: 4.6.2\n\
+\n\
+Package: kseek\n\
+Architecture: any\n\
+Description: Fuzzy file search KRunner plugin using fd + fzf\n\
+ A KDE Plasma 6 KRunner plugin for fast fuzzy file searching.\n\
+ Feeds paths from fd into fzf over D-Bus.\n' > debian/control
+
+RUN VERSION=$(cat VERSION | tr -d '[:space:]') && \
+    printf 'kseek (%s-1) unstable; urgency=low\n\n  * Package build.\n\n -- Vidhan Bhatt <heyitsmedevfr@gmail.com>  Mon, 01 Sep 2026 00:00:00 +0000\n' "$VERSION" > debian/changelog
+
+RUN printf '#!/usr/bin/make -f\n\
+%%:\n\
+\tdh $@\n\
+\n\
+override_dh_auto_configure:\n\
+\tdh_auto_configure -- -G Ninja -DBUILD_TESTING=OFF\n\
+\n\
+override_dh_auto_test:\n\
+\n\
+override_dh_strip:\n\
+\tdh_strip --no-automatic-dbgsym\n\
+\n\
+override_dh_auto_install:\n\
+\tdh_auto_install --destdir=debian/kseek\n' > debian/rules \
+    && chmod +x debian/rules
+
+RUN printf 'LICENSE\n' > debian/docs
+
+RUN dpkg-buildpackage -us -uc -b \
+    && mkdir -p /dist \
+    && cp /kseek_*.deb /dist/
+
+# ── Stage 3: Export ──────────────────────────────────────────────────
+FROM scratch AS export
+COPY --from=packager /dist/*.deb /

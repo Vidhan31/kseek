@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1
+
+# ── Stage 1: Build package ───────────────────────────────────────────
+FROM archlinux:latest AS builder
+
+RUN pacman -Syu --noconfirm base-devel cmake ninja qt6-base
+
+# makepkg refuses to run as root
+RUN useradd -m builduser \
+    && passwd -d builduser \
+    && printf 'builduser ALL=(ALL) NOPASSWD: ALL\n' >> /etc/sudoers
+
+USER builduser
+WORKDIR /home/builduser/build
+
+# Copy source tree and build package dynamically using VERSION file
+COPY --chown=builduser:builduser . /tmp/src
+
+RUN VERSION=$(cat /tmp/src/VERSION | tr -d '[:space:]') && \
+    mkdir -p /tmp/kseek-${VERSION} && \
+    cp -r /tmp/src/. /tmp/kseek-${VERSION}/ && \
+    tar -czf kseek-${VERSION}.tar.gz -C /tmp kseek-${VERSION} && \
+    sed "s/@VERSION@/${VERSION}/g" /tmp/src/dist/PKGBUILD.in > PKGBUILD && \
+    makepkg -sf --noconfirm
+
+# ── Stage 2: Export ──────────────────────────────────────────────────
+FROM scratch AS export
+COPY --from=builder /home/builduser/build/kseek-*.pkg.tar.zst /

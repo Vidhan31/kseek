@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.25)
-project(kseek VERSION 2.1.0 LANGUAGES CXX)
+
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" KSEEK_VERSION_RAW)
+string(STRIP "${KSEEK_VERSION_RAW}" KSEEK_VERSION)
+
+project(kseek VERSION ${KSEEK_VERSION} LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -23,11 +27,12 @@ add_compile_definitions(
     QT_NO_CAST_TO_ASCII
     QT_NO_CAST_FROM_BYTEARRAY
     QT_STRICT_ITERATORS
-    QT_DISABLE_DEPRECATED_BEFORE=0x060500
+    QT_DISABLE_DEPRECATED_BEFORE=0x060400
+    KSEEK_VERSION="${PROJECT_VERSION}"
 )
 
 # Qt 6 dependencies
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core DBus)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core DBus)
 qt_standard_project_setup()
 
 include(GNUInstallDirs)
@@ -72,6 +77,11 @@ if(NOT DEFINED KSEEK_EXECUTABLE)
 endif()
 
 configure_file(
+    plasma-runner-kseek.desktop.in
+    ${CMAKE_CURRENT_BINARY_DIR}/plasma-runner-kseek.desktop
+    @ONLY
+)
+configure_file(
     org.kde.krunner.kseek.service.in
     ${CMAKE_CURRENT_BINARY_DIR}/org.kde.krunner.kseek.service
     @ONLY
@@ -84,7 +94,7 @@ configure_file(
 
 # Installation rules
 install(TARGETS kseek DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES plasma-runner-kseek.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/krunner/dbusplugins)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/plasma-runner-kseek.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/krunner/dbusplugins)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/org.kde.krunner.kseek.service DESTINATION ${CMAKE_INSTALL_DATADIR}/dbus-1/services)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/plasma-runner-kseek.service DESTINATION ${CMAKE_INSTALL_DATADIR}/systemd/user)
 

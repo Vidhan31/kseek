@@ -24,7 +24,7 @@ int main(int argc, char *argv[]) {
     // Headless QtCore application - zero GUI subsystem overhead
     QCoreApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("kseek"));
-    app.setApplicationVersion(QStringLiteral("2.1.0"));
+    app.setApplicationVersion(QStringLiteral(KSEEK_VERSION));
 
     const bool debugLogging = qEnvironmentVariableIntValue("KSEEK_DEBUG") == 1;
     if (!debugLogging && qEnvironmentVariableIsEmpty("QT_LOGGING_RULES")) {
