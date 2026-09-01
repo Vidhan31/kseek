@@ -79,17 +79,17 @@ if(NOT DEFINED KSEEK_EXECUTABLE)
 endif()
 
 configure_file(
-    plasma-runner-kseek.desktop.in
+    src/plasma-runner-kseek.desktop.in
     ${CMAKE_CURRENT_BINARY_DIR}/plasma-runner-kseek.desktop
     @ONLY
 )
 configure_file(
-    org.kde.krunner.kseek.service.in
+    src/org.kde.krunner.kseek.service.in
     ${CMAKE_CURRENT_BINARY_DIR}/org.kde.krunner.kseek.service
     @ONLY
 )
 configure_file(
-    plasma-runner-kseek.service.in
+    src/plasma-runner-kseek.service.in
     ${CMAKE_CURRENT_BINARY_DIR}/plasma-runner-kseek.service
     @ONLY
 )

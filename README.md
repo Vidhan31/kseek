@@ -157,17 +157,17 @@ sudo cmake --install build
 
 ### Build packages with Docker
 
-Package builds write release archives to `dist/out/`:
+Package builds write release archives to `dist/`:
 
 ```bash
 # Debian / Ubuntu (.deb)
-docker build -f dist/Dockerfile.deb --target export --output type=local,dest=./dist/out .
+docker build -f packaging/Dockerfile.deb --target export --output type=local,dest=./dist .
 
 # Fedora (.rpm)
-docker build -f dist/Dockerfile.rpm --target export --output type=local,dest=./dist/out .
+docker build -f packaging/Dockerfile.rpm --target export --output type=local,dest=./dist .
 
 # Arch Linux (.pkg.tar.zst)
-docker build -f dist/Dockerfile.pkg --target export --output type=local,dest=./dist/out .
+docker build -f packaging/Dockerfile.pkg --target export --output type=local,dest=./dist .
 ```
 
 ### Run tests

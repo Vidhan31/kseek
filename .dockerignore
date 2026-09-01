@@ -1,5 +1,5 @@
 build/
-dist/out/
+dist/
 .git/
 .cache/
 *.user

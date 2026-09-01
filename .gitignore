@@ -3,8 +3,7 @@ build/
 build-*/
 cmake-build-*/
 bin/
-dist/out/
-dist/*.tar.gz
+dist/
 *.o
 *.a
 *.so

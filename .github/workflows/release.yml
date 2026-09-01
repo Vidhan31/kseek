@@ -68,17 +68,17 @@ jobs:
         include:
           - target: deb
             name: Debian (.deb)
-            file: dist/Dockerfile.deb
+            file: packaging/Dockerfile.deb
             outdir: dist/deb
             artifact: package-deb
           - target: arch
             name: Arch Linux (.pkg.tar.zst)
-            file: dist/Dockerfile.pkg
+            file: packaging/Dockerfile.pkg
             outdir: dist/arch
             artifact: package-arch
           - target: rpm
             name: Fedora RPM (.rpm)
-            file: dist/Dockerfile.rpm
+            file: packaging/Dockerfile.rpm
             outdir: dist/rpm
             artifact: package-rpm
 

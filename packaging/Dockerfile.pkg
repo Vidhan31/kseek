@@ -20,7 +20,7 @@ RUN VERSION=$(cat /tmp/src/VERSION | tr -d '[:space:]') && \
     mkdir -p /tmp/kseek-${VERSION} && \
     cp -r /tmp/src/. /tmp/kseek-${VERSION}/ && \
     tar -czf kseek-${VERSION}.tar.gz -C /tmp kseek-${VERSION} && \
-    sed "s/@VERSION@/${VERSION}/g" /tmp/src/dist/PKGBUILD.in > PKGBUILD && \
+    sed "s/@VERSION@/${VERSION}/g" /tmp/src/packaging/PKGBUILD.in > PKGBUILD && \
     makepkg -sf --noconfirm
 
 # ── Stage 2: Export ──────────────────────────────────────────────────
