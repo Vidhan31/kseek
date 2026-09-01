@@ -7,17 +7,19 @@
 #include <QHash>
 #include <QTimer>
 #include <QtDBus/QDBusMessage>
+#include <QtDBus/QDBusContext>
 
 #include "types.h"
+#include "config.h"
 #include "icon_resolver.h"
 #include "process_pipeline.h"
 #include "action_handler.h"
-#include <QtDBus/QDBusContext>
 
 class KSeekRunner : public QObject, public QDBusContext {
     Q_OBJECT
 public:
-    explicit KSeekRunner(const QString &searchRoot = QString(), QObject *parent = nullptr);
+    explicit KSeekRunner(const KSeekConfig &config = KSeekConfig::loadFromEnvironment(), QObject *parent = nullptr);
+    explicit KSeekRunner(const QString &searchRoot, QObject *parent = nullptr);
     ~KSeekRunner() override;
 
     RemoteActions actions() const;
@@ -27,7 +29,15 @@ public:
     void config();
     void setActivationToken(const QString &token);
 
+    // Prefix & query parsing
+    QString prefix() const { return m_prefix; }
+    void setPrefix(const QString &prefix);
+    bool parseQuery(const QString &query, QString &searchTerm) const;
+
     // Configuration accessors for testing & inspection
+    const KSeekConfig &currentConfig() const { return m_config; }
+    void applyConfig(const KSeekConfig &config);
+
     QString searchRoot() const { return m_searchRoot; }
     void setSearchRoot(const QString &root);
     int maxResults() const { return m_maxResults; }
@@ -54,9 +64,10 @@ private slots:
     void onDebounceTimeout();
 
 private:
-    void loadEnvironment();
     void sendReply(quint64 requestId, const RemoteMatches &matches);
 
+    KSeekConfig m_config;
+    QString m_prefix = QStringLiteral("f");
     QString m_searchRoot;
     int m_maxResults = 20;
     int m_timeoutMs = 2500;

@@ -23,7 +23,9 @@ public:
 
     bool isAvailable() const;
     QString fdBinary() const { return m_fdBin; }
+    void setFdBinary(const QString &bin);
     QString fzfBinary() const { return m_fzfBin; }
+    void setFzfBinary(const QString &bin);
     const FzfFeatures &features() const { return m_features; }
 
     void startSearch(quint64 requestId,

@@ -3,9 +3,11 @@
 #include <QFile>
 #include <QDir>
 #include <QSignalSpy>
+#include <QCommandLineParser>
 #include <memory>
 
 #include "types.h"
+#include "config.h"
 #include "icon_resolver.h"
 #include "process_pipeline.h"
 #include "kseek_runner.h"
@@ -20,7 +22,9 @@ private slots:
     void cleanup();
 
     void testMetaTypeRegistration();
-    void testQueryParsing();
+    void testArgSplitting();
+    void testPrefixConfiguration();
+    void testConfigEnvironmentAndCli();
     void testIconResolution();
     void testActionsList();
     void testMatchStructure();
@@ -97,20 +101,171 @@ void TestRunner::testMetaTypeRegistration() {
     QCOMPARE(vMatch.value<RemoteMatch>(), match);
 }
 
-void TestRunner::testQueryParsing() {
-    const QRegularExpression re(QStringLiteral(R"(^f\s+(.+)$)"));
+void TestRunner::testArgSplitting() {
+    // Basic unquoted split
+    QCOMPARE(splitArgs(QStringLiteral("a b c")), QStringList({QStringLiteral("a"), QStringLiteral("b"), QStringLiteral("c")}));
 
-    auto m1 = re.match(QStringLiteral("f test"));
-    QVERIFY(m1.hasMatch());
-    QCOMPARE(m1.captured(1), QStringLiteral("test"));
+    // Double quotes with spaces
+    const QString doubleQuoted = QStringLiteral("--exclude \"My Documents\" --hidden");
+    QCOMPARE(splitArgs(doubleQuoted), QStringList({QStringLiteral("--exclude"), QStringLiteral("My Documents"), QStringLiteral("--hidden")}));
 
-    auto m2 = re.match(QStringLiteral("f   spaced query  "));
-    QVERIFY(m2.hasMatch());
-    QCOMPARE(m2.captured(1), QStringLiteral("spaced query  "));
+    // Single quotes with wildcards
+    const QString singleQuoted = QStringLiteral("-E '*.git' -E '*cache*'");
+    QCOMPARE(splitArgs(singleQuoted), QStringList({QStringLiteral("-E"), QStringLiteral("*.git"), QStringLiteral("-E"), QStringLiteral("*cache*")}));
 
-    QVERIFY(!re.match(QStringLiteral("g test")).hasMatch());
-    QVERIFY(!re.match(QStringLiteral("find test")).hasMatch());
-    QVERIFY(!re.match(QStringLiteral("f")).hasMatch());
+    // Backslash escapes
+    const QString escaped = QStringLiteral("--path /foo\\ bar/baz\\ test");
+    QCOMPARE(splitArgs(escaped), QStringList({QStringLiteral("--path"), QStringLiteral("/foo bar/baz test")}));
+
+    // Mixed quotes & flags
+    const QString mixed = QStringLiteral("--prompt=\"search> \" --preview='cat \"file\"' --exact");
+    QCOMPARE(splitArgs(mixed), QStringList({QStringLiteral("--prompt=search> "), QStringLiteral("--preview=cat \"file\""), QStringLiteral("--exact")}));
+
+    // Empty and whitespace strings
+    QVERIFY(splitArgs(QStringLiteral("")).isEmpty());
+    QVERIFY(splitArgs(QStringLiteral("   \t \n  ")).isEmpty());
+
+    // Unclosed quote handling (should not crash)
+    QCOMPARE(splitArgs(QStringLiteral("--foo \"bar")), QStringList({QStringLiteral("--foo"), QStringLiteral("bar")}));
+}
+
+void TestRunner::testPrefixConfiguration() {
+    KSeekRunner runner(m_testDirPath);
+    QString term;
+
+    // Default prefix: 'f'
+    QCOMPARE(runner.prefix(), QStringLiteral("f"));
+
+    QVERIFY(runner.parseQuery(QStringLiteral("f test"), term));
+    QCOMPARE(term, QStringLiteral("test"));
+
+    // Case insensitivity
+    QVERIFY(runner.parseQuery(QStringLiteral("F test"), term));
+    QCOMPARE(term, QStringLiteral("test"));
+
+    // Colon separator
+    QVERIFY(runner.parseQuery(QStringLiteral("f:test"), term));
+    QCOMPARE(term, QStringLiteral("test"));
+
+    QVERIFY(runner.parseQuery(QStringLiteral("f: test"), term));
+    QCOMPARE(term, QStringLiteral("test"));
+
+    // Extra whitespace
+    QVERIFY(runner.parseQuery(QStringLiteral("f   spaced query  "), term));
+    QCOMPARE(term, QStringLiteral("spaced query"));
+
+    // Negative tests for 'f'
+    QVERIFY(!runner.parseQuery(QStringLiteral("firefox"), term));
+    QVERIFY(!runner.parseQuery(QStringLiteral("find test"), term));
+    QVERIFY(!runner.parseQuery(QStringLiteral("f"), term));
+    QVERIFY(!runner.parseQuery(QStringLiteral("f   "), term));
+
+    // Custom word prefix: 'find'
+    runner.setPrefix(QStringLiteral("find"));
+    QCOMPARE(runner.prefix(), QStringLiteral("find"));
+
+    QVERIFY(runner.parseQuery(QStringLiteral("find resume"), term));
+    QCOMPARE(term, QStringLiteral("resume"));
+
+    QVERIFY(runner.parseQuery(QStringLiteral("Find: resume"), term));
+    QCOMPARE(term, QStringLiteral("resume"));
+
+    QVERIFY(!runner.parseQuery(QStringLiteral("finding"), term));
+    QVERIFY(!runner.parseQuery(QStringLiteral("f resume"), term));
+
+    // Symbol / punctuation prefix: '?'
+    runner.setPrefix(QStringLiteral("?"));
+    QCOMPARE(runner.prefix(), QStringLiteral("?"));
+
+    QVERIFY(runner.parseQuery(QStringLiteral("?resume"), term));
+    QCOMPARE(term, QStringLiteral("resume"));
+
+    QVERIFY(runner.parseQuery(QStringLiteral("? resume"), term));
+    QCOMPARE(term, QStringLiteral("resume"));
+
+    QVERIFY(!runner.parseQuery(QStringLiteral("?"), term));
+    QVERIFY(!runner.parseQuery(QStringLiteral("?   "), term));
+
+    // Regex special characters in prefix: '[f]'
+    runner.setPrefix(QStringLiteral("[f]"));
+    QVERIFY(runner.parseQuery(QStringLiteral("[f] resume"), term));
+    QCOMPARE(term, QStringLiteral("resume"));
+    QVERIFY(!runner.parseQuery(QStringLiteral("f resume"), term));
+
+    // Empty / disabled prefix
+    runner.setPrefix(QStringLiteral(""));
+    QVERIFY(runner.prefix().isEmpty());
+    QVERIFY(runner.parseQuery(QStringLiteral("resume"), term));
+    QCOMPARE(term, QStringLiteral("resume"));
+    QVERIFY(runner.parseQuery(QStringLiteral("  spaced query  "), term));
+    QCOMPARE(term, QStringLiteral("spaced query"));
+    QVERIFY(!runner.parseQuery(QStringLiteral(""), term));
+    QVERIFY(!runner.parseQuery(QStringLiteral("   "), term));
+
+    // "none" keyword for disabled prefix
+    runner.setPrefix(QStringLiteral("none"));
+    QVERIFY(runner.prefix().isEmpty());
+    QVERIFY(runner.parseQuery(QStringLiteral("anything.txt"), term));
+    QCOMPARE(term, QStringLiteral("anything.txt"));
+}
+
+void TestRunner::testConfigEnvironmentAndCli() {
+    // Test environment loading
+    qputenv("KSEEK_PREFIX", "seek");
+    qputenv("KSEEK_MAX_RESULTS", "42");
+    qputenv("KSEEK_TIMEOUT", "4.0");
+    qputenv("KSEEK_DEBOUNCE", "150");
+    qputenv("KSEEK_FD_ARGS", "--exclude \"VirtualBox VMs\" --hidden");
+    qputenv("KSEEK_FZF_ARGS", "--exact --prompt='> '");
+
+    KSeekConfig envCfg = KSeekConfig::loadFromEnvironment();
+    QCOMPARE(envCfg.prefix, QStringLiteral("seek"));
+    QCOMPARE(envCfg.maxResults, 42);
+    QCOMPARE(envCfg.timeoutMs, 4000);
+    QCOMPARE(envCfg.debounceMs, 150);
+    QCOMPARE(envCfg.extraFdArgs, QStringList({QStringLiteral("--exclude"), QStringLiteral("VirtualBox VMs"), QStringLiteral("--hidden")}));
+    QCOMPARE(envCfg.extraFzfArgs, QStringList({QStringLiteral("--exact"), QStringLiteral("--prompt=> ")}));
+
+    // Test fallback trigger variable
+    qunsetenv("KSEEK_PREFIX");
+    qputenv("KSEEK_TRIGGER", "trig");
+    KSeekConfig trigCfg = KSeekConfig::loadFromEnvironment();
+    QCOMPARE(trigCfg.prefix, QStringLiteral("trig"));
+    qunsetenv("KSEEK_TRIGGER");
+
+    // Clean up env
+    qunsetenv("KSEEK_MAX_RESULTS");
+    qunsetenv("KSEEK_TIMEOUT");
+    qunsetenv("KSEEK_DEBOUNCE");
+    qunsetenv("KSEEK_FD_ARGS");
+    qunsetenv("KSEEK_FZF_ARGS");
+
+    // Test CLI argument override
+    QCommandLineParser parser;
+    parser.addOption(QCommandLineOption(QStringList{QStringLiteral("p"), QStringLiteral("prefix")}, QString(), QStringLiteral("prefix")));
+    parser.addOption(QCommandLineOption(QStringList{QStringLiteral("m"), QStringLiteral("max-results")}, QString(), QStringLiteral("count")));
+    parser.addOption(QCommandLineOption(QStringLiteral("fd-args"), QString(), QStringLiteral("args")));
+    parser.addOption(QCommandLineOption(QStringLiteral("debug")));
+    parser.addOption(QCommandLineOption(QStringLiteral("replace")));
+
+    QStringList cliArgs = {
+        QStringLiteral("kseek"),
+        QStringLiteral("-p"), QStringLiteral("find"),
+        QStringLiteral("-m"), QStringLiteral("100"),
+        QStringLiteral("--fd-args"), QStringLiteral("-E \"*.tmp\""),
+        QStringLiteral("--debug"),
+        QStringLiteral("--replace")
+    };
+    parser.parse(cliArgs);
+
+    KSeekConfig cliCfg = KSeekConfig::loadFromEnvironment();
+    cliCfg.applyCommandLine(parser);
+
+    QCOMPARE(cliCfg.prefix, QStringLiteral("find"));
+    QCOMPARE(cliCfg.maxResults, 100);
+    QCOMPARE(cliCfg.extraFdArgs, QStringList({QStringLiteral("-E"), QStringLiteral("*.tmp")}));
+    QVERIFY(cliCfg.debug);
+    QVERIFY(cliCfg.replaceExisting);
 }
 
 void TestRunner::testIconResolution() {
@@ -420,10 +575,10 @@ void TestRunner::testFzfCustomArgs() {
         QVERIFY(!found);
     }
 
-    // Test KSeekRunner environment parsing of KSEEK_FZF_ARGS
-    qputenv("KSEEK_FZF_ARGS", "--exact -i");
+    // Test KSeekRunner environment parsing of KSEEK_FZF_ARGS with quotes
+    qputenv("KSEEK_FZF_ARGS", "--exact -i --prompt=\"find> \"");
     KSeekRunner runner(m_testDirPath);
-    QCOMPARE(runner.extraFzfArgs(), QStringList({QStringLiteral("--exact"), QStringLiteral("-i")}));
+    QCOMPARE(runner.extraFzfArgs(), QStringList({QStringLiteral("--exact"), QStringLiteral("-i"), QStringLiteral("--prompt=find> ")}));
     qunsetenv("KSEEK_FZF_ARGS");
 }
 

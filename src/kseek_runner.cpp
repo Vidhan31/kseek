@@ -3,15 +3,13 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QUrl>
-#include <QProcessEnvironment>
 #include <QLoggingCategory>
 #include <QtDBus/QDBusConnection>
 
 Q_LOGGING_CATEGORY(lcRunner, "kseek.runner")
 
-KSeekRunner::KSeekRunner(const QString &searchRoot, QObject *parent)
+KSeekRunner::KSeekRunner(const KSeekConfig &config, QObject *parent)
     : QObject(parent),
-      m_queryRegex(QStringLiteral(R"(^f\s+(.+)$)")),
       m_pipeline(this),
       m_actionHandler(this),
       m_debounceTimer(this)
@@ -19,74 +17,79 @@ KSeekRunner::KSeekRunner(const QString &searchRoot, QObject *parent)
     m_debounceTimer.setSingleShot(true);
     connect(&m_debounceTimer, &QTimer::timeout, this, &KSeekRunner::onDebounceTimeout);
 
-    loadEnvironment();
+    connect(&m_pipeline, &ProcessPipeline::searchFinished, this, &KSeekRunner::onPipelineFinished);
+    connect(&m_pipeline, &ProcessPipeline::searchError, this, &KSeekRunner::onPipelineError);
+
+    applyConfig(config);
+}
+
+KSeekRunner::KSeekRunner(const QString &searchRoot, QObject *parent)
+    : KSeekRunner(KSeekConfig::loadFromEnvironment(), parent)
+{
     if (!searchRoot.isEmpty()) {
         setSearchRoot(searchRoot);
     }
-
-    connect(&m_pipeline, &ProcessPipeline::searchFinished, this, &KSeekRunner::onPipelineFinished);
-    connect(&m_pipeline, &ProcessPipeline::searchError, this, &KSeekRunner::onPipelineError);
 }
 
 KSeekRunner::~KSeekRunner() {
     teardown();
 }
 
-void KSeekRunner::loadEnvironment() {
-    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+void KSeekRunner::applyConfig(const KSeekConfig &cfg) {
+    m_config = cfg;
+    setPrefix(cfg.prefix);
+    setSearchRoot(cfg.searchRoot);
+    setMaxResults(cfg.maxResults);
+    setTimeoutMs(cfg.timeoutMs);
+    setDebounceMs(cfg.debounceMs);
+    setExtraFdArgs(cfg.extraFdArgs);
+    setExtraFzfArgs(cfg.extraFzfArgs);
 
-    QString root = env.value(QStringLiteral("KSEEK_ROOT"));
-    if (root.isEmpty()) {
-        root = env.value(QStringLiteral("KRUNNER_FZF_FD_ROOT"));
+    if (!cfg.fdBin.isEmpty()) {
+        m_pipeline.setFdBinary(cfg.fdBin);
     }
-    if (root.isEmpty() || !QDir(root).exists()) {
-        root = QDir::homePath();
+    if (!cfg.fzfBin.isEmpty()) {
+        m_pipeline.setFzfBinary(cfg.fzfBin);
     }
-    setSearchRoot(root);
+}
 
-    bool ok = false;
-    QString maxResultsStr = env.value(QStringLiteral("KSEEK_MAX_RESULTS"));
-    if (maxResultsStr.isEmpty()) {
-        maxResultsStr = env.value(QStringLiteral("KRUNNER_FZF_FD_MAX_RESULTS"));
-    }
-    if (!maxResultsStr.isEmpty()) {
-        int maxResults = maxResultsStr.toInt(&ok);
-        if (ok && maxResults > 0) {
-            m_maxResults = maxResults;
+void KSeekRunner::setPrefix(const QString &prefix) {
+    const QString trimmed = prefix.trimmed();
+    if (trimmed.isEmpty() || trimmed == u"-" || trimmed.compare(u"none", Qt::CaseInsensitive) == 0) {
+        m_prefix.clear();
+        m_queryRegex = QRegularExpression();
+    } else {
+        m_prefix = trimmed;
+        const QString escaped = QRegularExpression::escape(m_prefix);
+        const QChar lastChar = m_prefix.at(m_prefix.size() - 1);
+        QString pattern;
+        if (!lastChar.isLetterOrNumber()) {
+            pattern = QStringLiteral(R"(^%1\s*(.+)$)").arg(escaped);
+        } else {
+            pattern = QStringLiteral(R"(^%1(?:\s+|:\s*)(.+)$)").arg(escaped);
         }
+        m_queryRegex = QRegularExpression(pattern, QRegularExpression::CaseInsensitiveOption);
+    }
+}
+
+bool KSeekRunner::parseQuery(const QString &query, QString &searchTerm) const {
+    const QString trimmed = query.trimmed();
+    if (trimmed.isEmpty()) {
+        return false;
     }
 
-    QString timeoutStr = env.value(QStringLiteral("KSEEK_TIMEOUT"));
-    if (timeoutStr.isEmpty()) {
-        timeoutStr = env.value(QStringLiteral("KRUNNER_FZF_FD_TIMEOUT"));
-    }
-    if (!timeoutStr.isEmpty()) {
-        double timeoutSec = timeoutStr.toDouble(&ok);
-        if (ok && timeoutSec > 0.0) {
-            m_timeoutMs = static_cast<int>(timeoutSec * 1000.0);
-        }
+    if (m_prefix.isEmpty()) {
+        searchTerm = trimmed;
+        return true;
     }
 
-    QString debounceStr = env.value(QStringLiteral("KSEEK_DEBOUNCE"));
-    if (debounceStr.isEmpty()) {
-        debounceStr = env.value(QStringLiteral("KRUNNER_FZF_FD_DEBOUNCE"));
-    }
-    if (!debounceStr.isEmpty()) {
-        int debounce = debounceStr.toInt(&ok);
-        if (ok && debounce >= 0) {
-            m_debounceMs = debounce;
-        }
+    const auto match = m_queryRegex.match(trimmed);
+    if (!match.hasMatch()) {
+        return false;
     }
 
-    const QString extraArgs = env.value(QStringLiteral("KSEEK_FD_ARGS"));
-    if (!extraArgs.isEmpty()) {
-        m_extraFdArgs = extraArgs.split(QRegularExpression(QStringLiteral(R"(\s+)")), Qt::SkipEmptyParts);
-    }
-
-    const QString extraFzfArgs = env.value(QStringLiteral("KSEEK_FZF_ARGS"));
-    if (!extraFzfArgs.isEmpty()) {
-        m_extraFzfArgs = extraFzfArgs.split(QRegularExpression(QStringLiteral(R"(\s+)")), Qt::SkipEmptyParts);
-    }
+    searchTerm = match.captured(1).trimmed();
+    return !searchTerm.isEmpty();
 }
 
 void KSeekRunner::setSearchRoot(const QString &root) {
@@ -96,6 +99,7 @@ void KSeekRunner::setSearchRoot(const QString &root) {
     } else {
         m_searchRoot = QDir::homePath();
     }
+    m_config.searchRoot = m_searchRoot;
 }
 
 RemoteActions KSeekRunner::actions() const {
@@ -123,17 +127,9 @@ void KSeekRunner::matchAsync(const QString &query, const QDBusMessage &replyMess
     m_pendingReplies.insert(reqId, replyMessage);
     m_pipeline.cancel();
 
-    const QString trimmed = query.trimmed();
-    const auto match = m_queryRegex.match(trimmed);
-    if (!match.hasMatch()) {
-        qCInfo(lcRunner) << "Query does not match regex prefix ^f\\s+:" << trimmed;
-        sendReply(reqId, RemoteMatches{});
-        return;
-    }
-
-    const QString searchTerm = match.captured(1).trimmed();
-    if (searchTerm.isEmpty()) {
-        qCInfo(lcRunner) << "Empty search term after prefix";
+    QString searchTerm;
+    if (!parseQuery(query, searchTerm)) {
+        qCInfo(lcRunner) << "Query ignored (does not match prefix or is empty):" << query;
         sendReply(reqId, RemoteMatches{});
         return;
     }

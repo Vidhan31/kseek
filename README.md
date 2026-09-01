@@ -1,12 +1,10 @@
-# kseek
+# kseek - fuzzy file search for KRunner
 
-Fast fuzzy file search for KDE Plasma 6.
-
-Find files and folders instantly from KRunner using [fd](https://github.com/sharkdp/fd) and [fzf](https://github.com/junegunn/fzf). No background indexing services, no bloated database.
+A KRunner plugin for KDE Plasma that finds files and folders using [fd](https://github.com/sharkdp/fd) and [fzf](https://github.com/junegunn/fzf).
 
 ## Dependencies
 
-`kseek` requires `fd` and `fzf` installed on your system.
+`kseek` requires `fd` and `fzf`.
 
 Debian and Ubuntu:
 ```bash
@@ -25,19 +23,19 @@ sudo dnf install fd-find fzf
 
 ## Installation
 
-Download the package for your distribution from [GitHub Releases](https://github.com/vidhan31/kseek/releases):
+Prebuilt packages are available on [GitHub Releases](https://github.com/vidhan31/kseek/releases).
 
-**Debian and Ubuntu (`.deb`):**
+Debian and Ubuntu (`.deb`):
 ```bash
 sudo apt install ./kseek_*_amd64.deb
 ```
 
-**Fedora (`.rpm`):**
+Fedora (`.rpm`):
 ```bash
 sudo dnf install ./kseek-*.rpm
 ```
 
-**Arch Linux (`.pkg.tar.zst`):**
+Arch Linux (`.pkg.tar.zst`):
 ```bash
 sudo pacman -U ./kseek-*.pkg.tar.zst
 ```
@@ -46,53 +44,81 @@ sudo pacman -U ./kseek-*.pkg.tar.zst
 
 1. Open **System Settings** > **Search** > **Plasma Search**.
 2. Enable **kseek**.
-3. If KRunner does not show it immediately, restart KRunner with `kquitapp6 krunner` or log out and back in.
+3. Restart KRunner with `kquitapp6 krunner` or log out and back in.
 
 ## Usage
 
-Open KRunner (`Alt+Space`) and prefix your search query with `f `:
+Open KRunner (`Alt+Space`) and prefix your search with the plugin trigger (default is `f` followed by a space or colon):
 
 ```text
 f resume pdf
-f docker-compose
+f:docker-compose
 f taxes 2025
 f config.json
 ```
 
+The trigger prefix is configurable or can be disabled for prefixless queries.
+
 ### Available actions
 
-- **Enter**: Open the file or folder in its default application.
+- **Enter**: Open the item in its default application.
 - **Show in folder**: Open Dolphin and select the file.
-- **Copy path**: Copy the full path to your clipboard.
-- **Open terminal here**: Open your default terminal in the target directory.
-- **Drag and drop**: Drag the result directly out of KRunner into other apps.
+- **Copy path**: Copy the absolute path to your clipboard.
+- **Open terminal here**: Open your terminal in the selected directory.
+- **Drag and drop**: Drag the result out of KRunner into another application.
 
 ## Search customization
 
-`kseek` uses `fd` for disk traversal and `fzf` for fuzzy filtering:
+`kseek` delegates path discovery to `fd` and filtering to `fzf`:
 
-- **Ignore files**: `fd` respects `~/.config/fd/ignore` and `.gitignore` rules automatically.
-- **Fzf syntax**: Use `fzf` patterns like `'exact` or `.pdf$` to narrow matches.
-- **Extra arguments**: Pass custom CLI flags with `KSEEK_FD_ARGS` and `KSEEK_FZF_ARGS`.
+- **Ignore files**: `fd` automatically respects `~/.config/fd/ignore` and `.gitignore` rules.
+- **Fzf syntax**: Use standard `fzf` patterns like `'exact` or `.pdf$` to filter results.
+- **Extra arguments**: Pass additional CLI flags using `KSEEK_FD_ARGS` and `KSEEK_FZF_ARGS`. Quoting with single quotes, double quotes, and backslash escapes is supported.
 
 ## Configuration
 
-Set environment variables in `~/.config/systemd/user/plasma-runner-kseek.service`, `~/.config/environment.d/`, or your shell:
+Configure `kseek` through environment variables or command-line flags. For systemd user sessions, define variables in `~/.config/environment.d/kseek.conf` or edit the user service unit.
+
+### Environment variables
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `KSEEK_ROOT` | `$HOME` | Root directory to search. |
-| `KSEEK_MAX_RESULTS` | `20` | Maximum results returned. |
-| `KSEEK_TIMEOUT` | `2.5` | Query timeout in seconds. |
-| `KSEEK_DEBOUNCE` | `75` | Search debounce in milliseconds (set to `0` to disable). |
-| `KSEEK_FD_ARGS` | `""` | Extra arguments for `fd` (e.g. `"--hidden --follow"`). |
-| `KSEEK_FZF_ARGS` | `""` | Extra arguments for `fzf` (e.g. `"--exact"`). |
-| `KSEEK_FD_BIN` | auto-detected | Path to the `fd` binary. |
-| `KSEEK_FZF_BIN` | auto-detected | Path to the `fzf` binary. |
-| `TERMINAL` | auto-detected | Terminal emulator for the directory action. |
-| `KSEEK_DEBUG` | `0` | Set to `1` for verbose log output. |
+| `KSEEK_PREFIX` | `f` | Trigger prefix for queries, such as `f`, `find`, or `?`. Set to `""` or `none` for prefixless search. |
+| `KSEEK_ROOT` | `$HOME` | Root directory for file searches. |
+| `KSEEK_MAX_RESULTS` | `20` | Maximum number of results returned. |
+| `KSEEK_TIMEOUT` | `2.5` | Search timeout in seconds. |
+| `KSEEK_DEBOUNCE` | `75` | Search debounce in milliseconds. Set to `0` to disable. |
+| `KSEEK_FD_ARGS` | `""` | Extra arguments passed to `fd`, for example `'--exclude "My Documents" --hidden'`. |
+| `KSEEK_FZF_ARGS` | `""` | Extra arguments passed to `fzf`, for example `"--exact --tiebreak=begin"`. |
+| `KSEEK_FD_BIN` | auto-detected | Explicit path to the `fd` or `fdfind` executable. |
+| `KSEEK_FZF_BIN` | auto-detected | Explicit path to the `fzf` executable. |
+| `TERMINAL` | auto-detected | Terminal emulator binary for the directory action. |
+| `KSEEK_DEBUG` | `0` | Set to `1` to enable debug logs. |
 
-Reload the user service after making changes:
+### Command-line options
+
+`kseek` provides CLI options that override environment variables:
+
+```text
+Usage: kseek [options]
+
+Options:
+  -h, --help                 Displays help on commandline options.
+  -v, --version              Displays version information.
+  -p, --prefix <prefix>      Trigger prefix for queries (default: 'f', use '' or 'none' for prefixless).
+  -r, --root <path>          Root directory to search (default: $HOME).
+  -m, --max-results <count>  Maximum results returned (default: 20).
+  -t, --timeout <seconds>    Query timeout in seconds (default: 2.5).
+  -d, --debounce <ms>        Search debounce in milliseconds (default: 75).
+  --fd-args <args>           Extra arguments passed to fd.
+  --fzf-args <args>          Extra arguments passed to fzf.
+  --fd-bin <path>            Path to fd / fdfind executable.
+  --fzf-bin <path>           Path to fzf executable.
+  --replace                  Replace an already running kseek instance on D-Bus.
+  --debug                    Enable verbose debug logging.
+```
+
+Reload the user service after editing configuration files:
 
 ```bash
 systemctl --user daemon-reload
@@ -101,7 +127,7 @@ systemctl --user restart plasma-runner-kseek.service
 
 ## Performance
 
-Rewriting `kseek` in C++ with Qt 6 cut memory usage and eliminated startup lag compared to the original Python version:
+Rewriting the runner daemon in C++ with Qt 6 reduced memory usage and startup latency compared to the Python baseline.
 
 Measured on an AMD Ryzen 5 3600 running Fedora 44 and KDE Plasma 6.7:
 
@@ -131,7 +157,7 @@ sudo cmake --install build
 
 ### Build packages with Docker
 
-Package builds write artifacts to `dist/out/`:
+Package builds write release archives to `dist/out/`:
 
 ```bash
 # Debian / Ubuntu (.deb)
@@ -154,7 +180,7 @@ ctest --test-dir build --output-on-failure
 
 ### Test over D-Bus
 
-Test the runner service directly using `busctl`:
+Call the runner service directly using `busctl`:
 
 ```bash
 busctl --user call org.kde.krunner.kseek /kseek org.kde.krunner1 Match s "f resume"
@@ -162,13 +188,17 @@ busctl --user call org.kde.krunner.kseek /kseek org.kde.krunner1 Match s "f resu
 
 ## Uninstall
 
+Debian and Ubuntu:
 ```bash
-# Debian / Ubuntu
 sudo apt remove kseek
+```
 
-# Fedora
+Fedora:
+```bash
 sudo dnf remove kseek
+```
 
-# Arch Linux
+Arch Linux:
+```bash
 sudo pacman -R kseek
 ```

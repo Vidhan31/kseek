@@ -28,6 +28,19 @@ bool ProcessPipeline::isAvailable() const {
     return !m_fdBin.isEmpty() && !m_fzfBin.isEmpty();
 }
 
+void ProcessPipeline::setFdBinary(const QString &bin) {
+    if (!bin.isEmpty() && QFileInfo(bin).isExecutable()) {
+        m_fdBin = bin;
+    }
+}
+
+void ProcessPipeline::setFzfBinary(const QString &bin) {
+    if (!bin.isEmpty() && QFileInfo(bin).isExecutable()) {
+        m_fzfBin = bin;
+        detectFzfFeatures();
+    }
+}
+
 void ProcessPipeline::detectBinaries() {
     const QString customFd = qEnvironmentVariable("KSEEK_FD_BIN");
     if (!customFd.isEmpty() && QFileInfo(customFd).isExecutable()) {

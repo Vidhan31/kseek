@@ -41,6 +41,8 @@ include(CTest)
 # Static core library for runner logic & tests
 add_library(kseek_core STATIC
     src/types.h
+    src/config.h
+    src/config.cpp
     src/icon_resolver.h
     src/icon_resolver.cpp
     src/process_pipeline.h
