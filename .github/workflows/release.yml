@@ -1,0 +1,186 @@
+name: Release Deployment
+run-name: kseek ${{ inputs.tag_name || github.ref_name }}
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag name (e.g. v1.0.0)'
+        required: false
+        type: string
+      draft:
+        description: 'Publish as a Draft release (for maintainer review)'
+        required: false
+        type: boolean
+        default: false
+      prerelease:
+        description: 'Mark as a Pre-release (beta/rc)'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  resolve-version:
+    name: Resolve Release Version
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.tag-info.outputs.tag }}
+      version: ${{ steps.tag-info.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve release tag & version
+        id: tag-info
+        run: |
+          if [ -n "${{ github.event.inputs.tag_name }}" ]; then
+            TAG_NAME="${{ github.event.inputs.tag_name }}"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+          else
+            TAG_NAME="v$(cat VERSION | tr -d '[:space:]')"
+          fi
+          VERSION="${TAG_NAME#v}"
+          VERSION="${VERSION#V}"
+          echo "Resolved Tag: ${TAG_NAME}"
+          echo "Resolved Version: ${VERSION}"
+          echo "tag=${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+  build-packages:
+    name: Build ${{ matrix.name }}
+    needs: [resolve-version]
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: deb
+            name: Debian (.deb)
+            file: dist/Dockerfile.deb
+            outdir: dist/deb
+            artifact: package-deb
+          - target: arch
+            name: Arch Linux (.pkg.tar.zst)
+            file: dist/Dockerfile.pkg
+            outdir: dist/arch
+            artifact: package-arch
+          - target: rpm
+            name: Fedora RPM (.rpm)
+            file: dist/Dockerfile.rpm
+            outdir: dist/rpm
+            artifact: package-rpm
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Sync VERSION file with release version
+        run: |
+          echo "${{ needs.resolve-version.outputs.version }}" > VERSION
+          echo "Updated VERSION to $(cat VERSION)"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & Export ${{ matrix.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          target: export
+          outputs: type=local,dest=${{ matrix.outdir }}
+          cache-from: type=gha,scope=release-${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=release-${{ matrix.target }}
+
+      - name: Verify package artifacts
+        run: |
+          echo "Listing generated package artifacts in ${{ matrix.outdir }}:"
+          ls -lh ${{ matrix.outdir }}
+          if [ -z "$(ls -A ${{ matrix.outdir }})" ]; then
+            echo "ERROR: No package artifacts found in ${{ matrix.outdir }}"
+            exit 1
+          fi
+
+      - name: Upload ${{ matrix.name }} package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.outdir }}/*
+          retention-days: 7
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish Release & Attestations
+    needs: [resolve-version, build-packages]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: 'package-*'
+          path: dist/release-assets
+          merge-multiple: true
+
+      - name: Assemble release assets and compute checksums
+        id: assemble
+        run: |
+          echo "============================================================"
+          echo "Assembled Release Assets for version ${{ needs.resolve-version.outputs.version }}:"
+          echo "============================================================"
+          ls -lh dist/release-assets/
+
+          cd dist/release-assets
+          sha256sum * > SHA256SUMS.txt
+
+          echo "============================================================"
+          echo "SHA256 Checksums (SHA256SUMS.txt):"
+          echo "============================================================"
+          cat SHA256SUMS.txt
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'dist/release-assets/*'
+
+      - name: Extract release notes from CHANGELOG
+        id: changelog_reader
+        uses: mindsers/changelog-reader-action@v2
+        continue-on-error: true
+        with:
+          version: ${{ needs.resolve-version.outputs.version }}
+          path: ./CHANGELOG.md
+          validation_level: warn
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.resolve-version.outputs.tag }}
+          name: kseek ${{ needs.resolve-version.outputs.tag }}
+          body: ${{ steps.changelog_reader.outputs.changes }}
+          generate_release_notes: ${{ steps.changelog_reader.outputs.changes == '' }}
+          draft: ${{ github.event.inputs.draft || false }}
+          prerelease: ${{ steps.changelog_reader.outputs.status == 'prereleased' || github.event.inputs.prerelease || false }}
+          files: |
+            dist/release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

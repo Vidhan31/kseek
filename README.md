@@ -1,79 +1,79 @@
 # kseek
 
-A KDE Plasma 6 KRunner plugin for fuzzy file search written in C++ and Qt 6. It feeds paths from [fd](https://github.com/sharkdp/fd) into [fzf](https://github.com/junegunn/fzf) over D-Bus, giving you fast filename matching in KRunner without a background indexer.
+Fast fuzzy file search for KDE Plasma 6.
+
+Find files and folders instantly from KRunner using [fd](https://github.com/sharkdp/fd) and [fzf](https://github.com/junegunn/fzf). No background indexing services, no bloated database.
 
 ## Dependencies
 
-Runtime requirements:
-- `fzf`
-- `fd` (named `fd-find` on Ubuntu and Debian)
+`kseek` requires `fd` and `fzf` installed on your system.
 
-On Debian and Ubuntu:
+Debian and Ubuntu:
 ```bash
 sudo apt install fd-find fzf
 ```
-`kseek` checks for both `fd` and `fdfind` binaries automatically.
 
-On Arch Linux:
+Arch Linux:
 ```bash
 sudo pacman -S fd fzf
 ```
 
-On Fedora:
+Fedora:
 ```bash
 sudo dnf install fd-find fzf
 ```
 
 ## Installation
 
-Download the package for your distribution from GitHub releases:
+Download the package for your distribution from [GitHub Releases](https://github.com/vidhan31/kseek/releases):
 
-**Debian / Ubuntu:**
+**Debian and Ubuntu (`.deb`):**
 ```bash
 sudo apt install ./kseek_*_amd64.deb
 ```
 
-**Fedora:**
+**Fedora (`.rpm`):**
 ```bash
 sudo dnf install ./kseek-*.rpm
 ```
 
-**Arch Linux:**
+**Arch Linux (`.pkg.tar.zst`):**
 ```bash
 sudo pacman -U ./kseek-*.pkg.tar.zst
 ```
 
 ### Enable in Plasma settings
 
-1. Open **System Settings** and go to **Search** > **Plasma Search**.
-2. Make sure **kseek** is checked.
+1. Open **System Settings** > **Search** > **Plasma Search**.
+2. Enable **kseek**.
 3. If KRunner does not show it immediately, restart KRunner with `kquitapp6 krunner` or log out and back in.
 
 ## Usage
 
-Open KRunner (`Alt+Space`) and type `f` followed by your query:
+Open KRunner (`Alt+Space`) and prefix your search query with `f `:
 
 ```text
-f report
-f kseek
-f docs 2024
+f resume pdf
+f docker-compose
+f taxes 2025
+f config.json
 ```
 
-### Result actions
+### Available actions
 
-- **Default (Enter).** Opens the file or folder in its default application.
-- **Show in folder.** Opens Dolphin and selects the file.
-- **Copy path.** Copies the full path to the clipboard.
-- **Open terminal here.** Opens your default terminal in the target directory.
-- **Drag and drop.** Drag results directly out of KRunner into other windows.
+- **Enter**: Open the file or folder in its default application.
+- **Show in folder**: Open Dolphin and select the file.
+- **Copy path**: Copy the full path to your clipboard.
+- **Open terminal here**: Open your default terminal in the target directory.
+- **Drag and drop**: Drag the result directly out of KRunner into other apps.
 
 ## Search customization
 
-`kseek` hands off filesystem traversal to `fd` and filtering to `fzf`:
+`kseek` uses `fd` for disk traversal and `fzf` for fuzzy filtering:
 
-- Ignore rules: see the [fd documentation](https://github.com/sharkdp/fd) for ignore files (`~/.config/fd/ignore`, `.gitignore`) and flags.
-- Search syntax: see the [fzf syntax guide](https://github.com/junegunn/fzf#search-syntax) for exact matching, prefix/suffix matching, and negation.
-- Extra arguments: pass CLI flags through `KSEEK_FD_ARGS` and `KSEEK_FZF_ARGS`.
+- **Ignore files**: `fd` respects `~/.config/fd/ignore` and `.gitignore` rules automatically.
+- **Fzf syntax**: Use `fzf` patterns like `'exact` or `.pdf$` to narrow matches.
+- **Extra arguments**: Pass custom CLI flags with `KSEEK_FD_ARGS` and `KSEEK_FZF_ARGS`.
 
 ## Configuration
 
@@ -92,7 +92,7 @@ Set environment variables in `~/.config/systemd/user/plasma-runner-kseek.service
 | `TERMINAL` | auto-detected | Terminal emulator for the directory action. |
 | `KSEEK_DEBUG` | `0` | Set to `1` for verbose log output. |
 
-Reload systemd after editing the unit:
+Reload the user service after making changes:
 
 ```bash
 systemctl --user daemon-reload
@@ -101,9 +101,9 @@ systemctl --user restart plasma-runner-kseek.service
 
 ## Performance
 
-kseek was originally written in Python with PyGObject. Rewriting it in C++ using Qt 6 Core and D-Bus cut latency and memory usage:
+Rewriting `kseek` in C++ with Qt 6 cut memory usage and eliminated startup lag compared to the original Python version:
 
-Measured on an AMD Ryzen 5 3600 running Fedora 44, Linux 7.1, and KDE Plasma 6.7 (Wayland):
+Measured on an AMD Ryzen 5 3600 running Fedora 44 and KDE Plasma 6.7:
 
 | Metric | C++ (Qt 6) | Python baseline | Difference |
 | :--- | :--- | :--- | :--- |
@@ -112,18 +112,14 @@ Measured on an AMD Ryzen 5 3600 running Fedora 44, Linux 7.1, and KDE Plasma 6.7
 | Proportional memory (`PSS`) | 1.9 MB | 17.2 MB | ~9.3x lower |
 | Total RSS (`VmRSS`) | 15.7 MB | 33.3 MB | ~2.1x lower |
 
-Plasma already shares 14.2 MB of Qt 6 and system libraries in memory.
-
 ## Development and testing
 
 ### Build from source
 
-Build dependencies:
+Requirements:
 - C++20 compiler (`g++` >= 13 or `clang++` >= 16)
 - `cmake` (>= 3.25)
 - `qt6-base-dev` (Qt 6.4+)
-
-Clone, build, and install:
 
 ```bash
 git clone https://github.com/vidhan31/kseek.git
@@ -135,29 +131,20 @@ sudo cmake --install build
 
 ### Build packages with Docker
 
-Build standalone packages for each distribution. Outputs are written to `dist/out/`.
-
-#### .deb (Ubuntu 24.04 / Debian)
+Package builds write artifacts to `dist/out/`:
 
 ```bash
+# Debian / Ubuntu (.deb)
 docker build -f dist/Dockerfile.deb --target export --output type=local,dest=./dist/out .
-```
 
-#### .rpm (Fedora 44)
-
-```bash
+# Fedora (.rpm)
 docker build -f dist/Dockerfile.rpm --target export --output type=local,dest=./dist/out .
-```
 
-#### .pkg.tar.zst (Arch Linux)
-
-```bash
+# Arch Linux (.pkg.tar.zst)
 docker build -f dist/Dockerfile.pkg --target export --output type=local,dest=./dist/out .
 ```
 
-### Run unit tests
-
-Build and run tests with CTest:
+### Run tests
 
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
@@ -165,17 +152,15 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-### D-Bus query check
+### Test over D-Bus
 
-Test the runner service over D-Bus with `busctl`:
+Test the runner service directly using `busctl`:
 
 ```bash
-busctl --user call org.kde.krunner.kseek /kseek org.kde.krunner1 Match s "f kseek"
+busctl --user call org.kde.krunner.kseek /kseek org.kde.krunner1 Match s "f resume"
 ```
 
 ## Uninstall
-
-Package manager removal:
 
 ```bash
 # Debian / Ubuntu
@@ -187,4 +172,3 @@ sudo dnf remove kseek
 # Arch Linux
 sudo pacman -R kseek
 ```
-
