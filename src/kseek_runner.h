@@ -20,6 +20,7 @@ class KSeekRunner : public QObject, public QDBusContext {
 public:
     explicit KSeekRunner(const KSeekConfig &config = KSeekConfig::loadFromEnvironment(), QObject *parent = nullptr);
     explicit KSeekRunner(const QString &searchRoot, QObject *parent = nullptr);
+    explicit KSeekRunner(const QStringList &searchRoots, QObject *parent = nullptr);
     ~KSeekRunner() override;
 
     RemoteActions actions() const;
@@ -38,8 +39,10 @@ public:
     const KSeekConfig &currentConfig() const { return m_config; }
     void applyConfig(const KSeekConfig &config);
 
-    QString searchRoot() const { return m_searchRoot; }
-    void setSearchRoot(const QString &root);
+    QStringList searchRoots() const { return m_searchRoots; }
+    void setSearchRoots(const QStringList &roots);
+    QString searchRoot() const { return m_searchRoots.isEmpty() ? QString() : m_searchRoots.first(); }
+    void setSearchRoot(const QString &root) { setSearchRoots({root}); }
     int maxResults() const { return m_maxResults; }
     void setMaxResults(int count) { m_maxResults = count; }
     int timeoutMs() const { return m_timeoutMs; }
@@ -68,7 +71,7 @@ private:
 
     KSeekConfig m_config;
     QString m_prefix = QStringLiteral("f");
-    QString m_searchRoot;
+    QStringList m_searchRoots;
     int m_maxResults = 20;
     int m_timeoutMs = 2500;
     int m_debounceMs = 75;

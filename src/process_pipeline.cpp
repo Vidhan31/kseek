@@ -17,6 +17,7 @@ ProcessPipeline::ProcessPipeline(QObject *parent)
     connect(m_timer.get(), &QTimer::timeout, this, &ProcessPipeline::onTimeout);
 
     detectBinaries();
+    detectFdFeatures();
     detectFzfFeatures();
 }
 
@@ -31,6 +32,7 @@ bool ProcessPipeline::isAvailable() const {
 void ProcessPipeline::setFdBinary(const QString &bin) {
     if (!bin.isEmpty() && QFileInfo(bin).isExecutable()) {
         m_fdBin = bin;
+        detectFdFeatures();
     }
 }
 
@@ -95,6 +97,19 @@ void ProcessPipeline::detectBinaries() {
     }
 }
 
+void ProcessPipeline::detectFdFeatures() {
+    if (m_fdBin.isEmpty()) {
+        return;
+    }
+
+    QProcess fdHelp;
+    fdHelp.start(m_fdBin, {QStringLiteral("--help")});
+    if (fdHelp.waitForFinished(2000)) {
+        const QString out = QString::fromUtf8(fdHelp.readAllStandardOutput() + fdHelp.readAllStandardError());
+        m_fdFeatures.searchPath = out.contains(QLatin1StringView("--search-path"));
+    }
+}
+
 void ProcessPipeline::detectFzfFeatures() {
     if (m_fzfBin.isEmpty()) {
         return;
@@ -113,7 +128,7 @@ void ProcessPipeline::detectFzfFeatures() {
 }
 
 void ProcessPipeline::startSearch(quint64 requestId,
-                                 const QString &searchRoot,
+                                 const QStringList &searchRoots,
                                  const QString &query,
                                  const QStringList &extraFdArgs,
                                  const QStringList &extraFzfArgs,
@@ -135,8 +150,24 @@ void ProcessPipeline::startSearch(quint64 requestId,
     m_maxResults = maxResults;
     m_useNullIo = m_features.read0 && m_features.print0;
 
+    const QStringList validRoots = searchRoots.isEmpty() ? QStringList{QDir::homePath()} : searchRoots;
+
     QStringList fdArgs;
-    fdArgs << QStringLiteral("--color=never") << QStringLiteral("--base-directory") << searchRoot;
+    fdArgs << QStringLiteral("--color=never");
+
+    if (validRoots.size() == 1) {
+        fdArgs << QStringLiteral("--base-directory") << validRoots.first();
+    } else {
+        if (m_fdFeatures.searchPath) {
+            for (const QString &root : validRoots) {
+                fdArgs << QStringLiteral("--search-path") << root;
+            }
+        } else {
+            fdArgs << QStringLiteral(".");
+            fdArgs.append(validRoots);
+        }
+    }
+
     if (!extraFdArgs.isEmpty()) {
         fdArgs.append(extraFdArgs);
     }
@@ -165,8 +196,9 @@ void ProcessPipeline::startSearch(quint64 requestId,
     m_fdProc = std::make_unique<QProcess>();
     m_fzfProc = std::make_unique<QProcess>();
 
-    m_fdProc->setWorkingDirectory(searchRoot);
-    m_fzfProc->setWorkingDirectory(searchRoot);
+    const QString workingDir = validRoots.first();
+    m_fdProc->setWorkingDirectory(workingDir);
+    m_fzfProc->setWorkingDirectory(workingDir);
 
     // Sanitize fzf environment from user shell terminal options
     QProcessEnvironment fzfEnv = QProcessEnvironment::systemEnvironment();

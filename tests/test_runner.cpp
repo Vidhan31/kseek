@@ -35,6 +35,10 @@ private slots:
     void testFdCustomArgs();
     void testFzfEnvIsolation();
     void testFzfCustomArgs();
+    void testMultiRootConfigEnvironment();
+    void testMultiRootConfigCli();
+    void testMultiRootSearchPipeline();
+    void testMultiRootMatchStructure();
 
 private:
     std::unique_ptr<QTemporaryDir> m_tempDir;
@@ -243,8 +247,14 @@ void TestRunner::testConfigEnvironmentAndCli() {
     // Test CLI argument override
     QCommandLineParser parser;
     parser.addOption(QCommandLineOption(QStringList{QStringLiteral("p"), QStringLiteral("prefix")}, QString(), QStringLiteral("prefix")));
+    parser.addOption(QCommandLineOption(QStringList{QStringLiteral("r"), QStringLiteral("root")}, QString(), QStringLiteral("path")));
     parser.addOption(QCommandLineOption(QStringList{QStringLiteral("m"), QStringLiteral("max-results")}, QString(), QStringLiteral("count")));
+    parser.addOption(QCommandLineOption(QStringList{QStringLiteral("t"), QStringLiteral("timeout")}, QString(), QStringLiteral("seconds")));
+    parser.addOption(QCommandLineOption(QStringList{QStringLiteral("d"), QStringLiteral("debounce")}, QString(), QStringLiteral("ms")));
     parser.addOption(QCommandLineOption(QStringLiteral("fd-args"), QString(), QStringLiteral("args")));
+    parser.addOption(QCommandLineOption(QStringLiteral("fzf-args"), QString(), QStringLiteral("args")));
+    parser.addOption(QCommandLineOption(QStringLiteral("fd-bin"), QString(), QStringLiteral("path")));
+    parser.addOption(QCommandLineOption(QStringLiteral("fzf-bin"), QString(), QStringLiteral("path")));
     parser.addOption(QCommandLineOption(QStringLiteral("debug")));
     parser.addOption(QCommandLineOption(QStringLiteral("replace")));
 
@@ -580,6 +590,241 @@ void TestRunner::testFzfCustomArgs() {
     KSeekRunner runner(m_testDirPath);
     QCOMPARE(runner.extraFzfArgs(), QStringList({QStringLiteral("--exact"), QStringLiteral("-i"), QStringLiteral("--prompt=find> ")}));
     qunsetenv("KSEEK_FZF_ARGS");
+}
+
+void TestRunner::testMultiRootConfigEnvironment() {
+    QTemporaryDir tempDir1;
+    QTemporaryDir tempDir2;
+    QVERIFY(tempDir1.isValid());
+    QVERIFY(tempDir2.isValid());
+
+    const QString path1 = QFileInfo(tempDir1.path()).canonicalFilePath();
+    const QString path2 = QFileInfo(tempDir2.path()).canonicalFilePath();
+
+    // 1. Colon-separated list in KSEEK_ROOT
+    const QString joined = path1 + QStringLiteral(":") + path2;
+    qputenv("KSEEK_ROOT", joined.toUtf8());
+
+    KSeekConfig envCfg = KSeekConfig::loadFromEnvironment();
+    QCOMPARE(envCfg.searchRoots.size(), 2);
+    QCOMPARE(envCfg.searchRoots.at(0), path1);
+    QCOMPARE(envCfg.searchRoots.at(1), path2);
+    QCOMPARE(envCfg.searchRoot(), path1);
+
+    // 2. Fallback to KRUNNER_FZF_FD_ROOT
+    qunsetenv("KSEEK_ROOT");
+    qputenv("KRUNNER_FZF_FD_ROOT", joined.toUtf8());
+    KSeekConfig fallbackCfg = KSeekConfig::loadFromEnvironment();
+    QCOMPARE(fallbackCfg.searchRoots.size(), 2);
+    QCOMPARE(fallbackCfg.searchRoots.at(0), path1);
+    QCOMPARE(fallbackCfg.searchRoots.at(1), path2);
+    qunsetenv("KRUNNER_FZF_FD_ROOT");
+
+    // 3. Tilde expansion
+    qputenv("KSEEK_ROOT", "~");
+    KSeekConfig tildeCfg = KSeekConfig::loadFromEnvironment();
+    const QString canonicalHome = QFileInfo(QDir::homePath()).canonicalFilePath();
+    QCOMPARE(tildeCfg.searchRoots.size(), 1);
+    QCOMPARE(tildeCfg.searchRoots.first(), canonicalHome.isEmpty() ? QDir::homePath() : canonicalHome);
+
+    // 4. Deduplication
+    const QString dupJoined = path1 + QStringLiteral(":") + path1 + QStringLiteral(":") + path2;
+    qputenv("KSEEK_ROOT", dupJoined.toUtf8());
+    KSeekConfig dupCfg = KSeekConfig::loadFromEnvironment();
+    QCOMPARE(dupCfg.searchRoots.size(), 2);
+    QCOMPARE(dupCfg.searchRoots.at(0), path1);
+    QCOMPARE(dupCfg.searchRoots.at(1), path2);
+
+    // 5. Non-existent path pruning
+    const QString nonExistent = QStringLiteral("/non_existent_dir_123456789");
+    const QString mixedJoined = nonExistent + QStringLiteral(":") + path2;
+    qputenv("KSEEK_ROOT", mixedJoined.toUtf8());
+    KSeekConfig mixedCfg = KSeekConfig::loadFromEnvironment();
+    QCOMPARE(mixedCfg.searchRoots.size(), 1);
+    QCOMPARE(mixedCfg.searchRoots.first(), path2);
+
+    // 6. All non-existent -> fallback to home
+    qputenv("KSEEK_ROOT", nonExistent.toUtf8());
+    KSeekConfig noneCfg = KSeekConfig::loadFromEnvironment();
+    QCOMPARE(noneCfg.searchRoots.size(), 1);
+    QCOMPARE(noneCfg.searchRoots.first(), canonicalHome.isEmpty() ? QDir::homePath() : canonicalHome);
+
+    qunsetenv("KSEEK_ROOT");
+}
+
+void TestRunner::testMultiRootConfigCli() {
+    QTemporaryDir tempDir1;
+    QTemporaryDir tempDir2;
+    QTemporaryDir tempDir3;
+    QVERIFY(tempDir1.isValid());
+    QVERIFY(tempDir2.isValid());
+    QVERIFY(tempDir3.isValid());
+
+    const QString path1 = QFileInfo(tempDir1.path()).canonicalFilePath();
+    const QString path2 = QFileInfo(tempDir2.path()).canonicalFilePath();
+    const QString path3 = QFileInfo(tempDir3.path()).canonicalFilePath();
+
+    auto setupParser = [](QCommandLineParser &parser) {
+        parser.addOption(QCommandLineOption(QStringList{QStringLiteral("p"), QStringLiteral("prefix")}, QString(), QStringLiteral("prefix")));
+        parser.addOption(QCommandLineOption(QStringList{QStringLiteral("r"), QStringLiteral("root")}, QString(), QStringLiteral("path")));
+        parser.addOption(QCommandLineOption(QStringList{QStringLiteral("m"), QStringLiteral("max-results")}, QString(), QStringLiteral("count")));
+        parser.addOption(QCommandLineOption(QStringList{QStringLiteral("t"), QStringLiteral("timeout")}, QString(), QStringLiteral("seconds")));
+        parser.addOption(QCommandLineOption(QStringList{QStringLiteral("d"), QStringLiteral("debounce")}, QString(), QStringLiteral("ms")));
+        parser.addOption(QCommandLineOption(QStringLiteral("fd-args"), QString(), QStringLiteral("args")));
+        parser.addOption(QCommandLineOption(QStringLiteral("fzf-args"), QString(), QStringLiteral("args")));
+        parser.addOption(QCommandLineOption(QStringLiteral("fd-bin"), QString(), QStringLiteral("path")));
+        parser.addOption(QCommandLineOption(QStringLiteral("fzf-bin"), QString(), QStringLiteral("path")));
+        parser.addOption(QCommandLineOption(QStringLiteral("debug")));
+        parser.addOption(QCommandLineOption(QStringLiteral("replace")));
+    };
+
+    // 1. Multiple -r flags
+    {
+        QCommandLineParser parser;
+        setupParser(parser);
+        QStringList cliArgs = {
+            QStringLiteral("kseek"),
+            QStringLiteral("-r"), path1,
+            QStringLiteral("-r"), path2
+        };
+        parser.parse(cliArgs);
+
+        KSeekConfig cfg = KSeekConfig::loadFromEnvironment();
+        cfg.applyCommandLine(parser);
+        QCOMPARE(cfg.searchRoots.size(), 2);
+        QCOMPARE(cfg.searchRoots.at(0), path1);
+        QCOMPARE(cfg.searchRoots.at(1), path2);
+    }
+
+    // 2. Colon-separated in single --root flag
+    {
+        QCommandLineParser parser;
+        setupParser(parser);
+        QStringList cliArgs = {
+            QStringLiteral("kseek"),
+            QStringLiteral("--root"), path1 + QStringLiteral(":") + path2 + QStringLiteral(":") + path3
+        };
+        parser.parse(cliArgs);
+
+        KSeekConfig cfg = KSeekConfig::loadFromEnvironment();
+        cfg.applyCommandLine(parser);
+        QCOMPARE(cfg.searchRoots.size(), 3);
+        QCOMPARE(cfg.searchRoots.at(0), path1);
+        QCOMPARE(cfg.searchRoots.at(1), path2);
+        QCOMPARE(cfg.searchRoots.at(2), path3);
+    }
+
+    // 3. Combined multiple flags and colon-separated
+    {
+        QCommandLineParser parser;
+        setupParser(parser);
+        QStringList cliArgs = {
+            QStringLiteral("kseek"),
+            QStringLiteral("-r"), path1,
+            QStringLiteral("--root"), path2 + QStringLiteral(":") + path3
+        };
+        parser.parse(cliArgs);
+
+        KSeekConfig cfg = KSeekConfig::loadFromEnvironment();
+        cfg.applyCommandLine(parser);
+        QCOMPARE(cfg.searchRoots.size(), 3);
+        QCOMPARE(cfg.searchRoots.at(0), path1);
+        QCOMPARE(cfg.searchRoots.at(1), path2);
+        QCOMPARE(cfg.searchRoots.at(2), path3);
+    }
+}
+
+void TestRunner::testMultiRootSearchPipeline() {
+    ProcessPipeline pipeline;
+    if (!pipeline.isAvailable()) {
+        QSKIP("fd or fzf not installed");
+    }
+
+    QTemporaryDir tempDirA;
+    QTemporaryDir tempDirB;
+    QVERIFY(tempDirA.isValid());
+    QVERIFY(tempDirB.isValid());
+
+    const QString pathA = QFileInfo(tempDirA.path()).canonicalFilePath();
+    const QString pathB = QFileInfo(tempDirB.path()).canonicalFilePath();
+
+    // Create unique files in each temp dir
+    QFile fileA(pathA + QStringLiteral("/alpha_project_note.md"));
+    QVERIFY(fileA.open(QIODevice::WriteOnly | QIODevice::Text));
+    fileA.write("Alpha content\n");
+    fileA.close();
+
+    QFile fileB(pathB + QStringLiteral("/beta_project_design.txt"));
+    QVERIFY(fileB.open(QIODevice::WriteOnly | QIODevice::Text));
+    fileB.write("Beta content\n");
+    fileB.close();
+
+    // Search across both roots for "project"
+    QSignalSpy finishedSpy(&pipeline, &ProcessPipeline::searchFinished);
+    pipeline.startSearch(100, QStringList{pathA, pathB}, QStringLiteral("project"), {}, {}, 20, 2000);
+
+    QVERIFY(finishedSpy.wait(3000));
+    QCOMPARE(finishedSpy.count(), 1);
+
+    const auto args = finishedSpy.takeFirst();
+    QCOMPARE(args.at(0).toULongLong(), 100ULL);
+
+    const QStringList results = args.at(1).toStringList();
+    QCOMPARE(results.size(), 2);
+
+    bool foundA = false;
+    bool foundB = false;
+    for (const QString &p : results) {
+        if (p.contains(QLatin1StringView("alpha_project_note.md")) && p.contains(pathA)) {
+            foundA = true;
+        }
+        if (p.contains(QLatin1StringView("beta_project_design.txt")) && p.contains(pathB)) {
+            foundB = true;
+        }
+    }
+    QVERIFY(foundA);
+    QVERIFY(foundB);
+}
+
+void TestRunner::testMultiRootMatchStructure() {
+    QTemporaryDir tempDirA;
+    QTemporaryDir tempDirB;
+    QVERIFY(tempDirA.isValid());
+    QVERIFY(tempDirB.isValid());
+
+    const QString pathA = QFileInfo(tempDirA.path()).canonicalFilePath();
+    const QString pathB = QFileInfo(tempDirB.path()).canonicalFilePath();
+
+    const QString fileAPath = pathA + QStringLiteral("/project_alpha.cpp");
+    QFile fileA(fileAPath);
+    QVERIFY(fileA.open(QIODevice::WriteOnly | QIODevice::Text));
+    fileA.write("code\n");
+    fileA.close();
+
+    const QString fileBPath = pathB + QStringLiteral("/project_beta.h");
+    QFile fileB(fileBPath);
+    QVERIFY(fileB.open(QIODevice::WriteOnly | QIODevice::Text));
+    fileB.write("code\n");
+    fileB.close();
+
+    KSeekRunner runner(QStringList{pathA, pathB});
+    QCOMPARE(runner.searchRoots().size(), 2);
+    QCOMPARE(runner.searchRoots().at(0), pathA);
+    QCOMPARE(runner.searchRoots().at(1), pathB);
+
+    RemoteMatch matchA = runner.buildMatch(fileAPath, 0, 2);
+    QVERIFY(!matchA.id.isEmpty());
+    QCOMPARE(matchA.id, fileAPath);
+    QCOMPARE(matchA.text, QStringLiteral("project_alpha.cpp"));
+    QCOMPARE(matchA.properties.value(QStringLiteral("subtext")).toString(), fileAPath);
+    QVERIFY(matchA.properties.value(QStringLiteral("urls")).toStringList().first().contains(QLatin1StringView("project_alpha.cpp")));
+
+    RemoteMatch matchB = runner.buildMatch(fileBPath, 1, 2);
+    QVERIFY(!matchB.id.isEmpty());
+    QCOMPARE(matchB.id, fileBPath);
+    QCOMPARE(matchB.text, QStringLiteral("project_beta.h"));
+    QCOMPARE(matchB.properties.value(QStringLiteral("subtext")).toString(), fileBPath);
+    QVERIFY(matchB.properties.value(QStringLiteral("urls")).toStringList().first().contains(QLatin1StringView("project_beta.h")));
 }
 
 QTEST_GUILESS_MAIN(TestRunner)

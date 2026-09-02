@@ -6,10 +6,12 @@
 class QCommandLineParser;
 
 QStringList splitArgs(const QString &commandLine);
+QStringList parseSearchRoots(const QStringList &inputs);
+QStringList parseSearchRoots(const QString &input);
 
 struct KSeekConfig {
     QString prefix = QStringLiteral("f");
-    QString searchRoot;
+    QStringList searchRoots;
     int maxResults = 20;
     int timeoutMs = 2500;
     int debounceMs = 75;
@@ -19,6 +21,8 @@ struct KSeekConfig {
     QString fzfBin;
     bool debug = false;
     bool replaceExisting = false;
+
+    QString searchRoot() const { return searchRoots.isEmpty() ? QString() : searchRoots.first(); }
 
     static KSeekConfig loadFromEnvironment();
     void applyCommandLine(const QCommandLineParser &parser);

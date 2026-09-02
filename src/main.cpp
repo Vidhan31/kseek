@@ -45,7 +45,7 @@ int main(int argc, char *argv[]) {
 
     QCommandLineOption rootOpt(
         QStringList{QStringLiteral("r"), QStringLiteral("root")},
-        QStringLiteral("Root directory to search (default: $HOME)."),
+        QStringLiteral("Root directory to search (can be specified multiple times or colon-separated, default: $HOME)."),
         QStringLiteral("path")
     );
     parser.addOption(rootOpt);

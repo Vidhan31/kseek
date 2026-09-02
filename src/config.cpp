@@ -66,6 +66,62 @@ QStringList splitArgs(const QString &commandLine) {
     return args;
 }
 
+QStringList parseSearchRoots(const QStringList &inputs) {
+    QStringList roots;
+    const QString home = QDir::homePath();
+
+    for (const QString &rawInput : inputs) {
+        if (rawInput.trimmed().isEmpty()) {
+            continue;
+        }
+
+        const QStringList parts = rawInput.split(QDir::listSeparator(), Qt::SkipEmptyParts);
+        for (const QString &rawPart : parts) {
+            QStringList subParts;
+            if (QDir::listSeparator() != u';' && rawPart.contains(u';')) {
+                subParts = rawPart.split(u';', Qt::SkipEmptyParts);
+            } else {
+                subParts.append(rawPart);
+            }
+
+            for (QString token : subParts) {
+                token = token.trimmed();
+                if (token.isEmpty()) {
+                    continue;
+                }
+
+                if (token == u"~") {
+                    token = home;
+                } else if (token.startsWith(QLatin1StringView("~/"))) {
+                    token = home + token.sliced(1);
+                }
+
+                QFileInfo fi(token);
+                if (fi.exists() && fi.isDir()) {
+                    const QString canonical = fi.canonicalFilePath();
+                    if (!canonical.isEmpty() && !roots.contains(canonical)) {
+                        roots.append(canonical);
+                    }
+                }
+            }
+        }
+    }
+
+    if (roots.isEmpty()) {
+        const QString canonicalHome = QFileInfo(home).canonicalFilePath();
+        roots.append(canonicalHome.isEmpty() ? home : canonicalHome);
+    }
+
+    return roots;
+}
+
+QStringList parseSearchRoots(const QString &input) {
+    if (input.isEmpty()) {
+        return parseSearchRoots(QStringList{});
+    }
+    return parseSearchRoots(QStringList{input});
+}
+
 KSeekConfig KSeekConfig::loadFromEnvironment() {
     KSeekConfig cfg;
     const QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
@@ -81,18 +137,12 @@ KSeekConfig KSeekConfig::loadFromEnvironment() {
         cfg.prefix = QStringLiteral("f");
     }
 
-    // Search root: check KSEEK_ROOT, fallback to KRUNNER_FZF_FD_ROOT, fallback to home
+    // Search roots: check KSEEK_ROOT, fallback to KRUNNER_FZF_FD_ROOT, fallback to home
     QString root = env.value(QStringLiteral("KSEEK_ROOT"));
     if (root.isEmpty()) {
         root = env.value(QStringLiteral("KRUNNER_FZF_FD_ROOT"));
     }
-    if (root.isEmpty() || !QDir(root).exists()) {
-        root = QDir::homePath();
-    }
-    cfg.searchRoot = QFileInfo(root).canonicalFilePath();
-    if (cfg.searchRoot.isEmpty()) {
-        cfg.searchRoot = QDir::homePath();
-    }
+    cfg.searchRoots = parseSearchRoots(root);
 
     // Max results: check KSEEK_MAX_RESULTS, fallback to KRUNNER_FZF_FD_MAX_RESULTS
     bool ok = false;
@@ -157,10 +207,10 @@ void KSeekConfig::applyCommandLine(const QCommandLineParser &parser) {
         prefix = parser.value(QStringLiteral("prefix"));
     }
     if (parser.isSet(QStringLiteral("root"))) {
-        const QString root = parser.value(QStringLiteral("root"));
-        QFileInfo fi(root);
-        if (fi.isDir()) {
-            searchRoot = fi.canonicalFilePath();
+        const QStringList rootVals = parser.values(QStringLiteral("root"));
+        const QStringList parsed = parseSearchRoots(rootVals);
+        if (!parsed.isEmpty()) {
+            searchRoots = parsed;
         }
     }
     if (parser.isSet(QStringLiteral("max-results"))) {

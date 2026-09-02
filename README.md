@@ -84,7 +84,7 @@ Configure `kseek` through environment variables or command-line flags. For syste
 | Variable | Default | Description |
 | :--- | :--- | :--- |
 | `KSEEK_PREFIX` | `f` | Trigger prefix for queries, such as `f`, `find`, or `?`. Set to `""` or `none` for prefixless search. |
-| `KSEEK_ROOT` | `$HOME` | Root directory for file searches. |
+| `KSEEK_ROOT` | `$HOME` | Root directory for file searches. Supports colon-separated lists for multiple roots (e.g. `~/Projects:~/Documents` or `/dir1:/dir2`). |
 | `KSEEK_MAX_RESULTS` | `20` | Maximum number of results returned. |
 | `KSEEK_TIMEOUT` | `2.5` | Search timeout in seconds. |
 | `KSEEK_DEBOUNCE` | `75` | Search debounce in milliseconds. Set to `0` to disable. |
@@ -106,7 +106,7 @@ Options:
   -h, --help                 Displays help on commandline options.
   -v, --version              Displays version information.
   -p, --prefix <prefix>      Trigger prefix for queries (default: 'f', use '' or 'none' for prefixless).
-  -r, --root <path>          Root directory to search (default: $HOME).
+  -r, --root <path>          Root directory to search (can be specified multiple times or colon-separated, default: $HOME).
   -m, --max-results <count>  Maximum results returned (default: 20).
   -t, --timeout <seconds>    Query timeout in seconds (default: 2.5).
   -d, --debounce <ms>        Search debounce in milliseconds (default: 75).

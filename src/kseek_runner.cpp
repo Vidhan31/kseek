@@ -31,6 +31,14 @@ KSeekRunner::KSeekRunner(const QString &searchRoot, QObject *parent)
     }
 }
 
+KSeekRunner::KSeekRunner(const QStringList &searchRoots, QObject *parent)
+    : KSeekRunner(KSeekConfig::loadFromEnvironment(), parent)
+{
+    if (!searchRoots.isEmpty()) {
+        setSearchRoots(searchRoots);
+    }
+}
+
 KSeekRunner::~KSeekRunner() {
     teardown();
 }
@@ -38,7 +46,7 @@ KSeekRunner::~KSeekRunner() {
 void KSeekRunner::applyConfig(const KSeekConfig &cfg) {
     m_config = cfg;
     setPrefix(cfg.prefix);
-    setSearchRoot(cfg.searchRoot);
+    setSearchRoots(cfg.searchRoots);
     setMaxResults(cfg.maxResults);
     setTimeoutMs(cfg.timeoutMs);
     setDebounceMs(cfg.debounceMs);
@@ -92,14 +100,9 @@ bool KSeekRunner::parseQuery(const QString &query, QString &searchTerm) const {
     return !searchTerm.isEmpty();
 }
 
-void KSeekRunner::setSearchRoot(const QString &root) {
-    QFileInfo fi(root);
-    if (fi.isDir()) {
-        m_searchRoot = fi.canonicalFilePath();
-    } else {
-        m_searchRoot = QDir::homePath();
-    }
-    m_config.searchRoot = m_searchRoot;
+void KSeekRunner::setSearchRoots(const QStringList &roots) {
+    m_searchRoots = parseSearchRoots(roots);
+    m_config.searchRoots = m_searchRoots;
 }
 
 RemoteActions KSeekRunner::actions() const {
@@ -135,8 +138,8 @@ void KSeekRunner::matchAsync(const QString &query, const QDBusMessage &replyMess
     }
 
     if (m_debounceMs <= 0) {
-        qCInfo(lcRunner) << "Launching search (no debounce) for term:" << searchTerm << "in root:" << m_searchRoot;
-        m_pipeline.startSearch(reqId, m_searchRoot, searchTerm, m_extraFdArgs, m_extraFzfArgs, m_maxResults, m_timeoutMs);
+        qCInfo(lcRunner) << "Launching search (no debounce) for term:" << searchTerm << "in roots:" << m_searchRoots;
+        m_pipeline.startSearch(reqId, m_searchRoots, searchTerm, m_extraFdArgs, m_extraFzfArgs, m_maxResults, m_timeoutMs);
     } else {
         m_pendingSearchReqId = reqId;
         m_pendingSearchTerm = searchTerm;
@@ -213,9 +216,10 @@ RemoteMatch KSeekRunner::buildMatch(const QString &relPath, int rank, int total)
     if (cleanRel.startsWith(u'/')) {
         fullPath = cleanRel;
     } else {
-        fullPath = m_searchRoot.endsWith(u'/')
-            ? (m_searchRoot + cleanRel)
-            : (m_searchRoot + u'/' + cleanRel);
+        const QString base = m_searchRoots.isEmpty() ? QDir::homePath() : m_searchRoots.first();
+        fullPath = base.endsWith(u'/')
+            ? (base + cleanRel)
+            : (base + u'/' + cleanRel);
     }
 
     QFileInfo fi(fullPath);
@@ -274,7 +278,7 @@ void KSeekRunner::onDebounceTimeout() {
         return;
     }
     qCInfo(lcRunner) << "Launching debounced search for term:" << m_pendingSearchTerm << "reqId:" << m_pendingSearchReqId;
-    m_pipeline.startSearch(m_pendingSearchReqId, m_searchRoot, m_pendingSearchTerm, m_extraFdArgs, m_extraFzfArgs, m_maxResults, m_timeoutMs);
+    m_pipeline.startSearch(m_pendingSearchReqId, m_searchRoots, m_pendingSearchTerm, m_extraFdArgs, m_extraFzfArgs, m_maxResults, m_timeoutMs);
 }
 
 void KSeekRunner::run(const QString &matchId, const QString &actionId) {
