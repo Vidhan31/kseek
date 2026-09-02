@@ -41,5 +41,5 @@ indexing daemon in the background.
 %{_prefix}/lib/environment.d/kseek.conf
 
 %changelog
-* Mon Sep 01 2026 Vidhan Bhatt <heyitsmedevfr@gmail.com> - @VERSION@-1
+* Wed Sep 02 2026 Vidhan Bhatt <heyitsmedevfr@gmail.com> - @VERSION@-1
 - Package build

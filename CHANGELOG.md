@@ -7,11 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-09-01
+## [1.1.0] - 2026-09-02
 
 ### Added
-- Initial release of kseek KRunner plugin.
-- Pre-built distribution packages for Debian/Ubuntu (`.deb`), Fedora (`.rpm`), and Arch Linux (`.pkg.tar.zst`).
+- Multi-root search through multiple `--root` flags or colon-separated paths in `KSEEK_ROOT`.
+- Development install and uninstall scripts (`install-dev.sh`, `uninstall-dev.sh`).
+- Test suite and edge-case fixtures covering Unicode, spaces, dotfiles, symlinks, compound extensions, and case sensitivity.
+- Package dependencies for `fd` and `fzf` across Debian, RPM, and Arch Linux packages.
+- Default `kseek.conf` template installed to `/usr/lib/environment.d` and local prefixes.
 
-[Unreleased]: https://github.com/vidhan31/kseek/compare/v1.0.0...HEAD
+### Changed
+- Swapped external `head` and `awk` processes for in-process parsing and scoring.
+- Moved packaging files into `packaging/` and service files into `src/`.
+
+[Unreleased]: https://github.com/vidhan31/kseek/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/vidhan31/kseek/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/vidhan31/kseek/releases/tag/v1.0.0
