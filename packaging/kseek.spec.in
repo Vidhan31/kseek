@@ -14,6 +14,9 @@ BuildRequires:  gcc-c++
 BuildRequires:  ninja-build
 BuildRequires:  qt6-qtbase-devel >= 6.4
 
+Requires:       (fd-find or fd)
+Requires:       fzf
+
 %description
 A KDE Plasma 6 KRunner plugin for fast fuzzy file searching.
 Feeds paths from fd into fzf over D-Bus without running a heavy

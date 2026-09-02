@@ -6,7 +6,9 @@ Instead of running a background indexing daemon, `kseek` searches on demand usin
 
 ## Dependencies
 
-`kseek` requires `fd` and `fzf`.
+`kseek` requires `fd` and `fzf`. Native packages declare these as dependencies and install them automatically.
+
+If you build from source:
 
 Debian and Ubuntu:
 ```bash
@@ -41,6 +43,23 @@ Arch Linux (`.pkg.tar.zst`):
 ```bash
 sudo pacman -U ./kseek-*.pkg.tar.zst
 ```
+
+### Custom binary installations
+
+Native packages declare `fd` and `fzf` as hard dependencies. Package managers check their own databases, not your `$PATH`. If you installed `fd` or `fzf` outside the package manager (via Cargo, Homebrew, or manual downloads), the package manager will still install the distribution versions alongside your existing binaries.
+
+`kseek` searches `$PATH` and user paths (`~/.local/bin`, `~/.cargo/bin`, `~/.fzf/bin`) at runtime. To point `kseek` to a specific binary instead of the system package, set the path in `~/.config/environment.d/kseek.conf`:
+
+```bash
+KSEEK_FD_BIN="$HOME/.cargo/bin/fd"
+KSEEK_FZF_BIN="$HOME/.local/bin/fzf"
+```
+
+To install the native package without pulling distribution dependencies:
+
+- Debian and Ubuntu: `sudo dpkg -i --ignore-depends=fd-find,fzf ./kseek_*_amd64.deb`
+- Fedora: `sudo rpm -ivh --nodeps ./kseek-*.rpm`
+- Arch Linux: `sudo pacman -Ud --nodeps ./kseek-*.pkg.tar.zst`
 
 ### Enable in Plasma settings
 

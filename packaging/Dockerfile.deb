@@ -48,6 +48,7 @@ Standards-Version: 4.6.2\n\
 \n\
 Package: kseek\n\
 Architecture: any\n\
+Depends: ${shlibs:Depends}, ${misc:Depends}, fd-find, fzf\n\
 Description: Fuzzy file search KRunner plugin using fd + fzf\n\
  A KDE Plasma 6 KRunner plugin for fast fuzzy file searching.\n\
  Feeds paths from fd into fzf over D-Bus.\n' > debian/control
