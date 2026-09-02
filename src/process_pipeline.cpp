@@ -6,6 +6,8 @@
 #include <QLoggingCategory>
 #include <unistd.h>
 #include <signal.h>
+#include <ranges>
+#include <string_view>
 
 Q_LOGGING_CATEGORY(lcPipeline, "kseek.pipeline")
 
@@ -295,17 +297,20 @@ void ProcessPipeline::onFzfFinished(int exitCode, QProcess::ExitStatus /*exitSta
 
     QStringList paths;
     if (!rawOutput.isEmpty()) {
+        paths.reserve(std::min(m_maxResults, 128));
         const char delimiter = m_useNullIo ? '\0' : '\n';
-        int start = 0;
-        const int size = rawOutput.size();
-        const char *data = rawOutput.constData();
+        const std::string_view rawView(rawOutput.constData(), static_cast<size_t>(rawOutput.size()));
 
-        for (int i = 0; i <= size && paths.size() < m_maxResults; ++i) {
-            if (i == size || data[i] == delimiter) {
-                if (i > start) {
-                    paths.append(QString::fromUtf8(data + start, i - start));
-                }
-                start = i + 1;
+        for (auto chunk : rawView | std::views::split(delimiter)) {
+            if (paths.size() >= m_maxResults) {
+                break;
+            }
+            std::string_view token(chunk.begin(), chunk.end());
+            if (!m_useNullIo && !token.empty() && token.back() == '\r') {
+                token.remove_suffix(1);
+            }
+            if (!token.empty()) {
+                paths.append(QString::fromUtf8(token.data(), static_cast<qsizetype>(token.size())));
             }
         }
     }

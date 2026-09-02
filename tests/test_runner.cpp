@@ -39,6 +39,9 @@ private slots:
     void testMultiRootConfigCli();
     void testMultiRootSearchPipeline();
     void testMultiRootMatchStructure();
+    void testArgSplittingExtended();
+    void testPrefixFastPathParsing();
+    void testMultiRootTokenizerEdgeCases();
 
 private:
     std::unique_ptr<QTemporaryDir> m_tempDir;
@@ -825,6 +828,99 @@ void TestRunner::testMultiRootMatchStructure() {
     QCOMPARE(matchB.text, QStringLiteral("project_beta.h"));
     QCOMPARE(matchB.properties.value(QStringLiteral("subtext")).toString(), fileBPath);
     QVERIFY(matchB.properties.value(QStringLiteral("urls")).toStringList().first().contains(QLatin1StringView("project_beta.h")));
+}
+
+void TestRunner::testArgSplittingExtended() {
+    // Escaped double quotes inside double quotes
+    const QString escapedDquote = QStringLiteral("--message=\"Hello \\\"world\\\"\"");
+    QCOMPARE(splitArgs(escapedDquote), QStringList({QStringLiteral("--message=Hello \"world\"")}));
+
+    // Single quotes inside double quotes
+    const QString singleInDouble = QStringLiteral("--message=\"It's a test\"");
+    QCOMPARE(splitArgs(singleInDouble), QStringList({QStringLiteral("--message=It's a test")}));
+
+    // Adjacent quoted strings forming a single token
+    const QString adjacentQuotes = QStringLiteral("--flag=\"foo\"'bar'");
+    QCOMPARE(splitArgs(adjacentQuotes), QStringList({QStringLiteral("--flag=foobar")}));
+
+    // Multiple spaces between arguments
+    const QString multiSpaces = QStringLiteral("  -a    --long-option   value  ");
+    QCOMPARE(splitArgs(multiSpaces), QStringList({QStringLiteral("-a"), QStringLiteral("--long-option"), QStringLiteral("value")}));
+
+    // Trailing backslash tolerance
+    const QString trailingSlash = QStringLiteral("arg1 arg2\\");
+    QCOMPARE(splitArgs(trailingSlash), QStringList({QStringLiteral("arg1"), QStringLiteral("arg2\\")}));
+
+    // Empty string
+    QVERIFY(splitArgs(QString()).isEmpty());
+    QVERIFY(splitArgs(QStringLiteral("     ")).isEmpty());
+}
+
+void TestRunner::testPrefixFastPathParsing() {
+    KSeekRunner runner;
+    QString term;
+
+    // Single char alphanumeric prefix 'f'
+    runner.setPrefix(QStringLiteral("f"));
+    QVERIFY(runner.parseQuery(QStringLiteral("f hello"), term));
+    QCOMPARE(term, QStringLiteral("hello"));
+    QVERIFY(runner.parseQuery(QStringLiteral("F hello"), term));
+    QCOMPARE(term, QStringLiteral("hello"));
+    QVERIFY(runner.parseQuery(QStringLiteral("f:hello"), term));
+    QCOMPARE(term, QStringLiteral("hello"));
+    QVERIFY(runner.parseQuery(QStringLiteral("f: hello"), term));
+    QCOMPARE(term, QStringLiteral("hello"));
+    QVERIFY(runner.parseQuery(QStringLiteral("F: hello"), term));
+    QCOMPARE(term, QStringLiteral("hello"));
+    QVERIFY(runner.parseQuery(QStringLiteral("f\thello"), term));
+    QCOMPARE(term, QStringLiteral("hello"));
+
+    // Multi-char alphanumeric prefix 'find'
+    runner.setPrefix(QStringLiteral("find"));
+    QVERIFY(runner.parseQuery(QStringLiteral("find my document.pdf"), term));
+    QCOMPARE(term, QStringLiteral("my document.pdf"));
+    QVERIFY(runner.parseQuery(QStringLiteral("Find: my document.pdf"), term));
+    QCOMPARE(term, QStringLiteral("my document.pdf"));
+    QVERIFY(!runner.parseQuery(QStringLiteral("finding something"), term));
+    QVERIFY(!runner.parseQuery(QStringLiteral("find"), term));
+    QVERIFY(!runner.parseQuery(QStringLiteral("find   "), term));
+
+    // Symbol prefix '?'
+    runner.setPrefix(QStringLiteral("?"));
+    QVERIFY(runner.parseQuery(QStringLiteral("?test"), term));
+    QCOMPARE(term, QStringLiteral("test"));
+    QVERIFY(runner.parseQuery(QStringLiteral("? test"), term));
+    QCOMPARE(term, QStringLiteral("test"));
+    QVERIFY(!runner.parseQuery(QStringLiteral("?"), term));
+
+    // Disabled prefix
+    runner.setPrefix(QStringLiteral("-"));
+    QVERIFY(runner.prefix().isEmpty());
+    QVERIFY(runner.parseQuery(QStringLiteral("raw query text"), term));
+    QCOMPARE(term, QStringLiteral("raw query text"));
+}
+
+void TestRunner::testMultiRootTokenizerEdgeCases() {
+    QTemporaryDir temp1;
+    QTemporaryDir temp2;
+    QVERIFY(temp1.isValid() && temp2.isValid());
+
+    const QString p1 = QFileInfo(temp1.path()).canonicalFilePath();
+    const QString p2 = QFileInfo(temp2.path()).canonicalFilePath();
+
+    // Mixed colons and semicolons with empty segments
+    const QString input = QStringLiteral(":::") + p1 + QStringLiteral(";;;:") + p2 + QStringLiteral(":::");
+    const QStringList roots = parseSearchRoots(input);
+    QCOMPARE(roots.size(), 2);
+    QCOMPARE(roots.at(0), p1);
+    QCOMPARE(roots.at(1), p2);
+
+    // Whitespace padded entries
+    const QString padded = QStringLiteral("  ") + p1 + QStringLiteral("  :  ") + p2 + QStringLiteral("  ");
+    const QStringList paddedRoots = parseSearchRoots(padded);
+    QCOMPARE(paddedRoots.size(), 2);
+    QCOMPARE(paddedRoots.at(0), p1);
+    QCOMPARE(paddedRoots.at(1), p2);
 }
 
 QTEST_GUILESS_MAIN(TestRunner)

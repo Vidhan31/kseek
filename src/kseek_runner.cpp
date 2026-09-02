@@ -65,39 +65,53 @@ void KSeekRunner::setPrefix(const QString &prefix) {
     const QString trimmed = prefix.trimmed();
     if (trimmed.isEmpty() || trimmed == u"-" || trimmed.compare(u"none", Qt::CaseInsensitive) == 0) {
         m_prefix.clear();
-        m_queryRegex = QRegularExpression();
     } else {
         m_prefix = trimmed;
-        const QString escaped = QRegularExpression::escape(m_prefix);
-        const QChar lastChar = m_prefix.at(m_prefix.size() - 1);
-        QString pattern;
-        if (!lastChar.isLetterOrNumber()) {
-            pattern = QStringLiteral(R"(^%1\s*(.+)$)").arg(escaped);
-        } else {
-            pattern = QStringLiteral(R"(^%1(?:\s+|:\s*)(.+)$)").arg(escaped);
-        }
-        m_queryRegex = QRegularExpression(pattern, QRegularExpression::CaseInsensitiveOption);
     }
 }
 
 bool KSeekRunner::parseQuery(const QString &query, QString &searchTerm) const {
-    const QString trimmed = query.trimmed();
+    const QStringView trimmed = QStringView(query).trimmed();
     if (trimmed.isEmpty()) {
         return false;
     }
 
     if (m_prefix.isEmpty()) {
-        searchTerm = trimmed;
+        searchTerm = trimmed.toString();
         return true;
     }
 
-    const auto match = m_queryRegex.match(trimmed);
-    if (!match.hasMatch()) {
+    if (trimmed.size() <= m_prefix.size()) {
         return false;
     }
 
-    searchTerm = match.captured(1).trimmed();
-    return !searchTerm.isEmpty();
+    if (!trimmed.startsWith(m_prefix, Qt::CaseInsensitive)) {
+        return false;
+    }
+
+    const QChar lastPrefixChar = m_prefix.at(m_prefix.size() - 1);
+    const bool isAlphanumeric = lastPrefixChar.isLetterOrNumber();
+
+    QStringView remainder = trimmed.sliced(m_prefix.size());
+
+    if (isAlphanumeric) {
+        if (remainder.startsWith(u':')) {
+            remainder = remainder.sliced(1).trimmed();
+        } else if (remainder.at(0).isSpace()) {
+            remainder = remainder.trimmed();
+        } else {
+            return false;
+        }
+    } else {
+        remainder = remainder.trimmed();
+    }
+
+    if (remainder.isEmpty()) {
+        return false;
+    }
+
+    searchTerm = remainder.toString();
+    return true;
 }
 
 void KSeekRunner::setSearchRoots(const QStringList &roots) {

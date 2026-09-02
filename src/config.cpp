@@ -4,18 +4,28 @@
 #include <QFileInfo>
 #include <QProcessEnvironment>
 #include <QCommandLineParser>
+#include <QStringTokenizer>
+#include <QStringView>
+#include <QSet>
 
 QStringList splitArgs(const QString &commandLine) {
     QStringList args;
+    if (commandLine.trimmed().isEmpty()) {
+        return args;
+    }
+
+    args.reserve(8);
     QString current;
+    current.reserve(commandLine.size());
+
     bool inSingleQuote = false;
     bool inDoubleQuote = false;
     bool escapeNext = false;
     bool hasToken = false;
 
-    const int len = commandLine.size();
-    for (int i = 0; i < len; ++i) {
-        const QChar c = commandLine.at(i);
+    const QStringView view(commandLine);
+    for (qsizetype i = 0; i < view.size(); ++i) {
+        const QChar c = view.at(i);
 
         if (escapeNext) {
             current.append(c);
@@ -68,38 +78,36 @@ QStringList splitArgs(const QString &commandLine) {
 
 QStringList parseSearchRoots(const QStringList &inputs) {
     QStringList roots;
+    QSet<QString> seen;
     const QString home = QDir::homePath();
 
     for (const QString &rawInput : inputs) {
-        if (rawInput.trimmed().isEmpty()) {
+        const QStringView inputView = QStringView(rawInput).trimmed();
+        if (inputView.isEmpty()) {
             continue;
         }
 
-        const QStringList parts = rawInput.split(QDir::listSeparator(), Qt::SkipEmptyParts);
-        for (const QString &rawPart : parts) {
-            QStringList subParts;
-            if (QDir::listSeparator() != u';' && rawPart.contains(u';')) {
-                subParts = rawPart.split(u';', Qt::SkipEmptyParts);
-            } else {
-                subParts.append(rawPart);
-            }
-
-            for (QString token : subParts) {
-                token = token.trimmed();
-                if (token.isEmpty()) {
+        for (auto part : QStringTokenizer{inputView, u':'}) {
+            for (auto subPart : QStringTokenizer{part, u';'}) {
+                const QStringView tokenView = subPart.trimmed();
+                if (tokenView.isEmpty()) {
                     continue;
                 }
 
-                if (token == u"~") {
+                QString token;
+                if (tokenView == u"~") {
                     token = home;
-                } else if (token.startsWith(QLatin1StringView("~/"))) {
-                    token = home + token.sliced(1);
+                } else if (tokenView.startsWith(QLatin1StringView("~/"))) {
+                    token = home + tokenView.sliced(1).toString();
+                } else {
+                    token = tokenView.toString();
                 }
 
                 QFileInfo fi(token);
                 if (fi.exists() && fi.isDir()) {
                     const QString canonical = fi.canonicalFilePath();
-                    if (!canonical.isEmpty() && !roots.contains(canonical)) {
+                    if (!canonical.isEmpty() && !seen.contains(canonical)) {
+                        seen.insert(canonical);
                         roots.append(canonical);
                     }
                 }

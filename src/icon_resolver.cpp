@@ -1,4 +1,5 @@
 #include "icon_resolver.h"
+#include <QStringView>
 
 IconResolver::IconResolver() {
     m_cache.reserve(512);
@@ -9,8 +10,9 @@ QString IconResolver::resolve(const QString &filePath, bool isDir) {
         return QStringLiteral("inode-directory");
     }
 
-    const qsizetype slashIdx = filePath.lastIndexOf(u'/');
-    const QString fileName = (slashIdx == -1) ? filePath : filePath.sliced(slashIdx + 1);
+    const QStringView pathView(filePath);
+    const qsizetype slashIdx = pathView.lastIndexOf(u'/');
+    const QStringView fileName = (slashIdx == -1) ? pathView : pathView.sliced(slashIdx + 1);
 
     if (fileName.isEmpty()) {
         return QStringLiteral("application-octet-stream");
@@ -18,8 +20,8 @@ QString IconResolver::resolve(const QString &filePath, bool isDir) {
 
     const qsizetype dotIdx = fileName.lastIndexOf(u'.');
     const QString cacheKey = (dotIdx != -1 && dotIdx != fileName.size() - 1)
-        ? fileName.sliced(dotIdx).toLower()
-        : fileName.toLower();
+        ? fileName.sliced(dotIdx).toString().toLower()
+        : fileName.toString().toLower();
 
     {
         QReadLocker locker(&m_lock);

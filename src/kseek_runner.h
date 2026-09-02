@@ -3,7 +3,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
-#include <QRegularExpression>
+#include <QStringView>
 #include <QHash>
 #include <QTimer>
 #include <QtDBus/QDBusMessage>
@@ -77,7 +77,6 @@ private:
     int m_debounceMs = 75;
     QStringList m_extraFdArgs;
     QStringList m_extraFzfArgs;
-    QRegularExpression m_queryRegex;
 
     ProcessPipeline m_pipeline;
     IconResolver m_iconResolver;

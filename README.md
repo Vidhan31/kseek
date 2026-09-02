@@ -178,6 +178,33 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
+### Local installation for testing
+
+To build and install `kseek` into your user environment (`~/.local`) without requiring `sudo`:
+
+```bash
+# Build and install locally, running tests first
+./scripts/install-dev.sh --test
+
+# Optional flags:
+# ./scripts/install-dev.sh --build-type Release
+# ./scripts/install-dev.sh --clean
+# ./scripts/install-dev.sh --prefix "$HOME/.local"
+```
+
+The script configures CMake, builds the binary, registers the KRunner plugin desktop file and D-Bus service, reloads systemd user units, and refreshes the KDE service cache.
+
+### Local uninstallation
+
+To remove locally installed development files and reset Plasma/D-Bus state:
+
+```bash
+./scripts/uninstall-dev.sh
+
+# Optional: also clean the build directory
+./scripts/uninstall-dev.sh --clean-build
+```
+
 ### Test over D-Bus
 
 Call the runner service directly using `busctl`:
