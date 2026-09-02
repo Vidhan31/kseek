@@ -9,4 +9,9 @@ target_link_libraries(test_runner PRIVATE
     Qt6::Test
 )
 
+target_compile_definitions(test_runner PRIVATE
+    KSEEK_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+
 add_test(NAME test_runner COMMAND test_runner)
+

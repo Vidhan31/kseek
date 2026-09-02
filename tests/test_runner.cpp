@@ -42,6 +42,13 @@ private slots:
     void testArgSplittingExtended();
     void testPrefixFastPathParsing();
     void testMultiRootTokenizerEdgeCases();
+    void testSpecificMultiRootsFedowinAndHome();
+    void testEdgeCaseMatchConstruction();
+    void testEdgeCaseMatchConstruction_data();
+    void testEdgeCasePipelineDelimitation();
+    void testEdgeCasePipelineDelimitation_data();
+    void testEdgeCaseConfigCombinations();
+    void testCoreParsingEdgeCases();
 
 private:
     std::unique_ptr<QTemporaryDir> m_tempDir;
@@ -923,5 +930,585 @@ void TestRunner::testMultiRootTokenizerEdgeCases() {
     QCOMPARE(paddedRoots.at(1), p2);
 }
 
+void TestRunner::testSpecificMultiRootsFedowinAndHome() {
+    const QString fedowinPath = QStringLiteral("/mnt/fedowin");
+    const QString homeDevPath = QStringLiteral("/home/dev");
+
+    // Verify parser handles /mnt/fedowin and /home/dev/ (with trailing slash)
+    const QStringList parsed = parseSearchRoots(QStringList{fedowinPath, homeDevPath + QStringLiteral("/")});
+    if (QDir(fedowinPath).exists() && QDir(homeDevPath).exists()) {
+        const QString canonFedowin = QFileInfo(fedowinPath).canonicalFilePath();
+        const QString canonHomeDev = QFileInfo(homeDevPath).canonicalFilePath();
+
+        QCOMPARE(parsed.size(), 2);
+        QCOMPARE(parsed.at(0), canonFedowin);
+        QCOMPARE(parsed.at(1), canonHomeDev);
+
+        // Test colon-separated format
+        const QStringList parsedColon = parseSearchRoots(fedowinPath + QStringLiteral(":") + homeDevPath + QStringLiteral("/"));
+        QCOMPARE(parsedColon.size(), 2);
+        QCOMPARE(parsedColon.at(0), canonFedowin);
+        QCOMPARE(parsedColon.at(1), canonHomeDev);
+
+        // Test pipeline search across both roots
+        ProcessPipeline pipeline;
+        if (pipeline.isAvailable()) {
+            QSignalSpy finishedSpy(&pipeline, &ProcessPipeline::searchFinished);
+            pipeline.startSearch(501, parsed, QStringLiteral("kseek"), {}, {}, 20, 2500);
+            QVERIFY(finishedSpy.wait(3000));
+            QCOMPARE(finishedSpy.count(), 1);
+
+            const QStringList results = finishedSpy.takeFirst().at(1).toStringList();
+            QVERIFY(!results.isEmpty());
+            bool foundKseekInHome = false;
+            for (const QString &p : results) {
+                if (p.contains(canonHomeDev) && p.contains(QLatin1StringView("kseek"))) {
+                    foundKseekInHome = true;
+                    break;
+                }
+            }
+            QVERIFY(foundKseekInHome);
+        }
+
+        // Test KSeekRunner buildMatch
+        KSeekRunner runner(parsed);
+        QCOMPARE(runner.searchRoots().size(), 2);
+
+        // Match for a file under /mnt/fedowin
+        const QString fedowinSample = canonFedowin + QStringLiteral("/Backup");
+        if (QFileInfo::exists(fedowinSample)) {
+            RemoteMatch match = runner.buildMatch(fedowinSample, 0, 1);
+            QVERIFY(!match.id.isEmpty());
+            QCOMPARE(match.id, fedowinSample);
+            QCOMPARE(match.text, QStringLiteral("Backup"));
+            QCOMPARE(match.properties.value(QStringLiteral("subtext")).toString(), fedowinSample);
+        }
+
+        // Match for a file under /home/dev
+        const QString homeSample = canonHomeDev + QStringLiteral("/Projects");
+        if (QFileInfo::exists(homeSample)) {
+            RemoteMatch match = runner.buildMatch(homeSample, 0, 1);
+            QVERIFY(!match.id.isEmpty());
+            QCOMPARE(match.id, homeSample);
+            QCOMPARE(match.text, QStringLiteral("Projects"));
+            QCOMPARE(match.properties.value(QStringLiteral("subtext")).toString(), homeSample);
+        }
+    }
+}
+
+static QString edgeCasesRoot() {
+#ifdef KSEEK_SOURCE_DIR
+    const QString srcDir = QStringLiteral(KSEEK_SOURCE_DIR) + QStringLiteral("/tests/edge_cases");
+    if (QDir(srcDir).exists()) {
+        return QFileInfo(srcDir).canonicalFilePath();
+    }
+#endif
+    const QString appDir = QCoreApplication::applicationDirPath();
+    const QStringList fallbacks = {
+        appDir + QStringLiteral("/../../tests/edge_cases"),
+        appDir + QStringLiteral("/../tests/edge_cases"),
+        QStringLiteral("/home/dev/Projects/kseek/tests/edge_cases")
+    };
+    for (const auto &p : fallbacks) {
+        if (QDir(p).exists()) {
+            return QFileInfo(p).canonicalFilePath();
+        }
+    }
+    return QString();
+}
+
+void TestRunner::testEdgeCaseMatchConstruction_data() {
+    QTest::addColumn<QString>("relPath");
+    QTest::addColumn<QString>("expectedLeafText");
+    QTest::addColumn<bool>("isDir");
+
+    // Whitespace & Spacing
+    QTest::newRow("spaces_dir") << QStringLiteral("01_whitespace_and_spacing/folder with spaces") << QStringLiteral("folder with spaces") << true;
+    QTest::newRow("spaces_inner_file") << QStringLiteral("01_whitespace_and_spacing/folder with spaces/inner file with space.txt") << QStringLiteral("inner file with space.txt") << false;
+    QTest::newRow("multi_spaces_dir") << QStringLiteral("01_whitespace_and_spacing/multiple   spaces   dir") << QStringLiteral("multiple   spaces   dir") << true;
+    QTest::newRow("multi_spaces_file") << QStringLiteral("01_whitespace_and_spacing/multiple   spaces   dir/spaced   inner   file.log") << QStringLiteral("spaced   inner   file.log") << false;
+    QTest::newRow("leading_space_dir") << QStringLiteral("01_whitespace_and_spacing/ leading_space_dir") << QStringLiteral(" leading_space_dir") << true;
+    QTest::newRow("leading_space_file") << QStringLiteral("01_whitespace_and_spacing/ leading_space.txt") << QStringLiteral(" leading_space.txt") << false;
+    QTest::newRow("trailing_space_file") << QStringLiteral("01_whitespace_and_spacing/trailing_space.txt ") << QStringLiteral("trailing_space.txt ") << false;
+    QTest::newRow("tab_separated_file") << QStringLiteral("01_whitespace_and_spacing/tab\tseparated.tsv") << QStringLiteral("tab\tseparated.tsv") << false;
+    QTest::newRow("mixed_spacing_doc") << QStringLiteral("01_whitespace_and_spacing/mixed _ spacing _ and _ underscores .doc") << QStringLiteral("mixed _ spacing _ and _ underscores .doc") << false;
+
+    // Brackets & Special Chars
+    QTest::newRow("brackets_year_report") << QStringLiteral("02_special_and_shell_chars/brackets_and_parens/[2024] financial_report [Q1-Q4].pdf") << QStringLiteral("[2024] financial_report [Q1-Q4].pdf") << false;
+    QTest::newRow("parentheses_copy") << QStringLiteral("02_special_and_shell_chars/brackets_and_parens/document (copy) (1).docx") << QStringLiteral("document (copy) (1).docx") << false;
+    QTest::newRow("braces_config") << QStringLiteral("02_special_and_shell_chars/brackets_and_parens/{config_template}.json") << QStringLiteral("{config_template}.json") << false;
+    QTest::newRow("array_indices_cpp") << QStringLiteral("02_special_and_shell_chars/brackets_and_parens/array[0][1].cpp") << QStringLiteral("array[0][1].cpp") << false;
+    QTest::newRow("angle_brackets_xml") << QStringLiteral("02_special_and_shell_chars/brackets_and_parens/<angle_brackets>.xml") << QStringLiteral("<angle_brackets>.xml") << false;
+
+    // Quotes & Escapes
+    QTest::newRow("apostrophe_odt") << QStringLiteral("02_special_and_shell_chars/quotes_and_escapes/john's report.odt") << QStringLiteral("john's report.odt") << false;
+    QTest::newRow("single_quoted_txt") << QStringLiteral("02_special_and_shell_chars/quotes_and_escapes/'single_quoted'.txt") << QStringLiteral("'single_quoted'.txt") << false;
+    QTest::newRow("double_quoted_txt") << QStringLiteral("02_special_and_shell_chars/quotes_and_escapes/\"double_quoted\".txt") << QStringLiteral("\"double_quoted\".txt") << false;
+    QTest::newRow("backtick_command_sh") << QStringLiteral("02_special_and_shell_chars/quotes_and_escapes/`backtick_command`.sh") << QStringLiteral("`backtick_command`.sh") << false;
+    QTest::newRow("quote_in_middle_txt") << QStringLiteral("02_special_and_shell_chars/quotes_and_escapes/quote\"in'middle.txt") << QStringLiteral("quote\"in'middle.txt") << false;
+
+    // Shell Operators
+    QTest::newRow("ampersand_txt") << QStringLiteral("02_special_and_shell_chars/shell_operators/file_with_&_ampersand.txt") << QStringLiteral("file_with_&_ampersand.txt") << false;
+    QTest::newRow("semicolon_txt") << QStringLiteral("02_special_and_shell_chars/shell_operators/semicolon;separated.txt") << QStringLiteral("semicolon;separated.txt") << false;
+    QTest::newRow("pipe_txt") << QStringLiteral("02_special_and_shell_chars/shell_operators/pipe|file.txt") << QStringLiteral("pipe|file.txt") << false;
+    QTest::newRow("dollar_var_txt") << QStringLiteral("02_special_and_shell_chars/shell_operators/dollar_$HOME_var.txt") << QStringLiteral("dollar_$HOME_var.txt") << false;
+    QTest::newRow("eval_sh") << QStringLiteral("02_special_and_shell_chars/shell_operators/eval_$(whoami).sh") << QStringLiteral("eval_$(whoami).sh") << false;
+    QTest::newRow("asterisk_glob_txt") << QStringLiteral("02_special_and_shell_chars/shell_operators/asterisk_*_glob.txt") << QStringLiteral("asterisk_*_glob.txt") << false;
+    QTest::newRow("question_mark_txt") << QStringLiteral("02_special_and_shell_chars/shell_operators/question_?_mark.txt") << QStringLiteral("question_?_mark.txt") << false;
+    QTest::newRow("exclamation_txt") << QStringLiteral("02_special_and_shell_chars/shell_operators/exclamation!mark.txt") << QStringLiteral("exclamation!mark.txt") << false;
+    QTest::newRow("hash_tag_md") << QStringLiteral("02_special_and_shell_chars/shell_operators/hash_#tag_file.md") << QStringLiteral("hash_#tag_file.md") << false;
+    QTest::newRow("percent_encoded_html") << QStringLiteral("02_special_and_shell_chars/shell_operators/percent%20encoded.html") << QStringLiteral("percent%20encoded.html") << false;
+    QTest::newRow("at_user_json") << QStringLiteral("02_special_and_shell_chars/shell_operators/at_@user.json") << QStringLiteral("at_@user.json") << false;
+    QTest::newRow("caret_power_txt") << QStringLiteral("02_special_and_shell_chars/shell_operators/caret^power.txt") << QStringLiteral("caret^power.txt") << false;
+    QTest::newRow("tilde_backup_bak") << QStringLiteral("02_special_and_shell_chars/shell_operators/tilde~backup.bak") << QStringLiteral("tilde~backup.bak") << false;
+    QTest::newRow("math_calc") << QStringLiteral("02_special_and_shell_chars/shell_operators/math+plus=minus-sign.calc") << QStringLiteral("math+plus=minus-sign.calc") << false;
+    QTest::newRow("comma_csv") << QStringLiteral("02_special_and_shell_chars/shell_operators/comma,separated,values.csv") << QStringLiteral("comma,separated,values.csv") << false;
+
+    // CLI Flags & Hyphens
+    QTest::newRow("flag_txt") << QStringLiteral("02_special_and_shell_chars/cli_flags_and_hyphens/-flag.txt") << QStringLiteral("-flag.txt") << false;
+    QTest::newRow("help_flag_txt") << QStringLiteral("02_special_and_shell_chars/cli_flags_and_hyphens/--help.txt") << QStringLiteral("--help.txt") << false;
+    QTest::newRow("rf_flag_txt") << QStringLiteral("02_special_and_shell_chars/cli_flags_and_hyphens/-rf.txt") << QStringLiteral("-rf.txt") << false;
+    QTest::newRow("dash_dir") << QStringLiteral("02_special_and_shell_chars/cli_flags_and_hyphens/-dash_folder") << QStringLiteral("-dash_folder") << true;
+    QTest::newRow("nested_flag_dir") << QStringLiteral("02_special_and_shell_chars/cli_flags_and_hyphens/--nested_flag_folder") << QStringLiteral("--nested_flag_folder") << true;
+
+    // Unicode & i18n
+    QTest::newRow("cafe_pdf") << QStringLiteral("03_unicode_and_i18n/latin_accents/café_menu.pdf") << QStringLiteral("café_menu.pdf") << false;
+    QTest::newRow("resume_docx") << QStringLiteral("03_unicode_and_i18n/latin_accents/résumé_2025.docx") << QStringLiteral("résumé_2025.docx") << false;
+    QTest::newRow("munchen_txt") << QStringLiteral("03_unicode_and_i18n/latin_accents/München_über_alles.txt") << QStringLiteral("München_über_alles.txt") << false;
+    QTest::newRow("naive_py") << QStringLiteral("03_unicode_and_i18n/latin_accents/naïve_bayes_model.py") << QStringLiteral("naïve_bayes_model.py") << false;
+    QTest::newRow("sao_paulo_xlsx") << QStringLiteral("03_unicode_and_i18n/latin_accents/São_Paulo_relatório.xlsx") << QStringLiteral("São_Paulo_relatório.xlsx") << false;
+    QTest::newRow("facade_kt") << QStringLiteral("03_unicode_and_i18n/latin_accents/façade_pattern.kt") << QStringLiteral("façade_pattern.kt") << false;
+    QTest::newRow("smorgasbord_recipe") << QStringLiteral("03_unicode_and_i18n/latin_accents/smörgåsbord.recipe") << QStringLiteral("smörgåsbord.recipe") << false;
+    QTest::newRow("kobenhavn_md") << QStringLiteral("03_unicode_and_i18n/latin_accents/København_guide.md") << QStringLiteral("København_guide.md") << false;
+    QTest::newRow("cyrillic_doc_pdf") << QStringLiteral("03_unicode_and_i18n/cyrillic/документ_отчет.pdf") << QStringLiteral("документ_отчет.pdf") << false;
+    QTest::newRow("cyrillic_dir") << QStringLiteral("03_unicode_and_i18n/cyrillic/кириллица_папка") << QStringLiteral("кириллица_папка") << true;
+    QTest::newRow("chinese_doc_md") << QStringLiteral("03_unicode_and_i18n/cjk_asian/chinese_中文/项目文档.md") << QStringLiteral("项目文档.md") << false;
+    QTest::newRow("japanese_doc_txt") << QStringLiteral("03_unicode_and_i18n/cjk_asian/japanese_日本語/日本語ドキュメント.txt") << QStringLiteral("日本語ドキュメント.txt") << false;
+    QTest::newRow("korean_doc_docx") << QStringLiteral("03_unicode_and_i18n/cjk_asian/korean_한국어/프로젝트_기획서.docx") << QStringLiteral("프로젝트_기획서.docx") << false;
+    QTest::newRow("indic_doc_txt") << QStringLiteral("03_unicode_and_i18n/indic_devanagari/दस्तावेज़.txt") << QStringLiteral("दस्तावेज़.txt") << false;
+    QTest::newRow("greek_notes_txt") << QStringLiteral("03_unicode_and_i18n/greek/ελληνικά_σημειώσεις.txt") << QStringLiteral("ελληνικά_σημειώσεις.txt") << false;
+    QTest::newRow("arabic_pdf") << QStringLiteral("03_unicode_and_i18n/rtl_scripts/arabic_مستند/تقرير_مالي.pdf") << QStringLiteral("تقرير_مالي.pdf") << false;
+    QTest::newRow("hebrew_txt") << QStringLiteral("03_unicode_and_i18n/rtl_scripts/hebrew_עברית/מסמך_בדיקה.txt") << QStringLiteral("מסמך_בדיקה.txt") << false;
+    QTest::newRow("emoji_rocket_yaml") << QStringLiteral("03_unicode_and_i18n/emojis_and_symbols/🚀_launch_manifest.yaml") << QStringLiteral("🚀_launch_manifest.yaml") << false;
+    QTest::newRow("emoji_hotfix_patch") << QStringLiteral("03_unicode_and_i18n/emojis_and_symbols/🔥_hotfix.patch") << QStringLiteral("🔥_hotfix.patch") << false;
+    QTest::newRow("emoji_favorites_json") << QStringLiteral("03_unicode_and_i18n/emojis_and_symbols/❤️_favorites.json") << QStringLiteral("❤️_favorites.json") << false;
+    QTest::newRow("emoji_docs_dir") << QStringLiteral("03_unicode_and_i18n/emojis_and_symbols/📁_documents") << QStringLiteral("📁_documents") << true;
+
+    // Extensionless & Compounds
+    QTest::newRow("no_ext_makefile") << QStringLiteral("05_extensions_and_names/no_extension/Makefile") << QStringLiteral("Makefile") << false;
+    QTest::newRow("no_ext_dockerfile") << QStringLiteral("05_extensions_and_names/no_extension/Dockerfile") << QStringLiteral("Dockerfile") << false;
+    QTest::newRow("no_ext_license") << QStringLiteral("05_extensions_and_names/no_extension/LICENSE") << QStringLiteral("LICENSE") << false;
+    QTest::newRow("uppercase_ext_png") << QStringLiteral("05_extensions_and_names/uppercase_and_mixed_extensions/IMAGE.PNG") << QStringLiteral("IMAGE.PNG") << false;
+    QTest::newRow("compound_tar_gz") << QStringLiteral("05_extensions_and_names/compound_extensions/archive.tar.gz") << QStringLiteral("archive.tar.gz") << false;
+    QTest::newRow("compound_min_js") << QStringLiteral("05_extensions_and_names/compound_extensions/bundle.min.js") << QStringLiteral("bundle.min.js") << false;
+    QTest::newRow("compound_d_ts") << QStringLiteral("05_extensions_and_names/compound_extensions/component.module.css.d.ts") << QStringLiteral("component.module.css.d.ts") << false;
+    QTest::newRow("trailing_dot") << QStringLiteral("05_extensions_and_names/trailing_dots/ending_with_dot.") << QStringLiteral("ending_with_dot.") << false;
+
+    // Case Sensitivity
+    QTest::newRow("case_lower_txt") << QStringLiteral("06_case_sensitivity/lowercase.txt") << QStringLiteral("lowercase.txt") << false;
+    QTest::newRow("case_upper_txt") << QStringLiteral("06_case_sensitivity/LOWERCASE.TXT") << QStringLiteral("LOWERCASE.TXT") << false;
+    QTest::newRow("case_camel_ts") << QStringLiteral("06_case_sensitivity/camelCase.ts") << QStringLiteral("camelCase.ts") << false;
+
+    // Deep Nesting
+    QTest::newRow("deep_nested_target") << QStringLiteral("07_deep_nesting_and_lengths/deep/l1/l2/l3/l4/l5/l6/l7/l8/l9/l10/deeply_nested_target.txt") << QStringLiteral("deeply_nested_target.txt") << false;
+
+    // Symlinks
+    QTest::newRow("valid_file_symlink") << QStringLiteral("09_symlinks/valid_file_link.txt") << QStringLiteral("valid_file_link.txt") << false;
+    QTest::newRow("valid_dir_symlink") << QStringLiteral("09_symlinks/valid_dir_link") << QStringLiteral("valid_dir_link") << true;
+    QTest::newRow("special_char_symlink") << QStringLiteral("09_symlinks/link with [special] & characters.txt") << QStringLiteral("link with [special] & characters.txt") << false;
+}
+
+void TestRunner::testEdgeCaseMatchConstruction() {
+    QFETCH(QString, relPath);
+    QFETCH(QString, expectedLeafText);
+    QFETCH(bool, isDir);
+
+    const QString root = edgeCasesRoot();
+    if (root.isEmpty() || !QDir(root).exists()) {
+        QSKIP("edge_cases directory not available");
+    }
+
+    const QString fullPath = root + u'/' + relPath;
+    if (!QFileInfo::exists(fullPath)) {
+        QSKIP(qPrintable(QStringLiteral("Fixture does not exist: %1").arg(fullPath)));
+    }
+
+    KSeekRunner runner(root);
+    RemoteMatch m = runner.buildMatch(relPath, 0, 10);
+    QVERIFY2(!m.id.isEmpty(), qPrintable(QStringLiteral("Failed to build match for: %1").arg(relPath)));
+    QCOMPARE(m.id, fullPath);
+    QCOMPARE(m.text, expectedLeafText);
+    QCOMPARE(m.properties.value(QStringLiteral("subtext")).toString(), fullPath);
+
+    // Verify valid URL roundtrip
+    const QStringList urls = m.properties.value(QStringLiteral("urls")).toStringList();
+    QCOMPARE(urls.size(), 1);
+    const QUrl parsedUrl(urls.first());
+    QVERIFY(parsedUrl.isValid());
+    QCOMPARE(parsedUrl.scheme(), QStringLiteral("file"));
+    QCOMPARE(parsedUrl.toLocalFile(), fullPath);
+
+    // Verify icon
+    QVERIFY(!m.icon.isEmpty());
+    if (isDir) {
+        QCOMPARE(m.icon, QStringLiteral("inode-directory"));
+    }
+
+    // Verify actions
+    const QStringList actions = m.properties.value(QStringLiteral("actions")).toStringList();
+    QCOMPARE(actions.size(), 4);
+    QVERIFY(actions.contains(QStringLiteral("open_app")));
+    QVERIFY(actions.contains(QStringLiteral("show_item")));
+    QVERIFY(actions.contains(QStringLiteral("copy_path")));
+    QVERIFY(actions.contains(QStringLiteral("open_terminal")));
+}
+
+void TestRunner::testEdgeCasePipelineDelimitation_data() {
+    QTest::addColumn<QString>("query");
+    QTest::addColumn<QString>("expectedContainedFile");
+
+    // Whitespace
+    QTest::newRow("spaces_inner_file") << QStringLiteral("inner file with space") << QStringLiteral("inner file with space.txt");
+    QTest::newRow("leading_space") << QStringLiteral("leading_space") << QStringLiteral(" leading_space.txt");
+    QTest::newRow("trailing_space") << QStringLiteral("trailing_space") << QStringLiteral("trailing_space.txt ");
+    QTest::newRow("tab_separated") << QStringLiteral("tab separated") << QStringLiteral("tab\tseparated.tsv");
+
+    // Brackets and Quotes
+    QTest::newRow("bracket_year") << QStringLiteral("[2024]") << QStringLiteral("[2024] financial_report [Q1-Q4].pdf");
+    QTest::newRow("parentheses_copy") << QStringLiteral("document (copy)") << QStringLiteral("document (copy) (1).docx");
+    QTest::newRow("curly_config") << QStringLiteral("{config_template}") << QStringLiteral("{config_template}.json");
+    QTest::newRow("apostrophe_john") << QStringLiteral("john's report") << QStringLiteral("john's report.odt");
+    QTest::newRow("single_quoted") << QStringLiteral("'single_quoted'") << QStringLiteral("'single_quoted'.txt");
+    QTest::newRow("double_quoted") << QStringLiteral("\"double_quoted\"") << QStringLiteral("\"double_quoted\".txt");
+    QTest::newRow("backtick_cmd") << QStringLiteral("`backtick_command`") << QStringLiteral("`backtick_command`.sh");
+
+    // Shell Operators
+    QTest::newRow("ampersand") << QStringLiteral("file_with_&_ampersand") << QStringLiteral("file_with_&_ampersand.txt");
+    QTest::newRow("semicolon") << QStringLiteral("semicolon;separated") << QStringLiteral("semicolon;separated.txt");
+    QTest::newRow("dollar_var") << QStringLiteral("dollar_$HOME") << QStringLiteral("dollar_$HOME_var.txt");
+    QTest::newRow("percent_enc") << QStringLiteral("percent%20") << QStringLiteral("percent%20encoded.html");
+    QTest::newRow("hash_tag") << QStringLiteral("hash_#tag") << QStringLiteral("hash_#tag_file.md");
+
+    // CLI Flags
+    QTest::newRow("flag_txt") << QStringLiteral("-flag.txt") << QStringLiteral("-flag.txt");
+    QTest::newRow("help_flag") << QStringLiteral("--help.txt") << QStringLiteral("--help.txt");
+
+    // Unicode & i18n
+    QTest::newRow("cafe_accent") << QStringLiteral("café") << QStringLiteral("café_menu.pdf");
+    QTest::newRow("resume_accent") << QStringLiteral("résumé") << QStringLiteral("résumé_2025.docx");
+    QTest::newRow("munchen_accent") << QStringLiteral("München") << QStringLiteral("München_über_alles.txt");
+    QTest::newRow("cyrillic_doc") << QStringLiteral("документ") << QStringLiteral("документ_отчет.pdf");
+    QTest::newRow("chinese_doc") << QStringLiteral("项目文档") << QStringLiteral("项目文档.md");
+    QTest::newRow("japanese_doc") << QStringLiteral("日本語ドキュメント") << QStringLiteral("日本語ドキュメント.txt");
+    QTest::newRow("korean_doc") << QStringLiteral("프로젝트_기획서") << QStringLiteral("프로젝트_기획서.docx");
+    QTest::newRow("indic_doc") << QStringLiteral("दस्तावेज़") << QStringLiteral("दस्तावेज़.txt");
+    QTest::newRow("greek_notes") << QStringLiteral("ελληνικά") << QStringLiteral("ελληνικά_σημειώσεις.txt");
+    QTest::newRow("arabic_doc") << QStringLiteral("تقرير_مالي") << QStringLiteral("تقرير_مالي.pdf");
+    QTest::newRow("hebrew_doc") << QStringLiteral("מסמך_בדיקה") << QStringLiteral("מסמך_בדיקה.txt");
+    QTest::newRow("emoji_rocket") << QStringLiteral("🚀") << QStringLiteral("🚀_launch_manifest.yaml");
+    QTest::newRow("emoji_hotfix") << QStringLiteral("🔥") << QStringLiteral("🔥_hotfix.patch");
+
+    // Compounds and Deep
+    QTest::newRow("compound_tar") << QStringLiteral("archive.tar.gz") << QStringLiteral("archive.tar.gz");
+    QTest::newRow("compound_d_ts") << QStringLiteral("component.module.css.d.ts") << QStringLiteral("component.module.css.d.ts");
+    QTest::newRow("deep_nested") << QStringLiteral("deeply_nested_target") << QStringLiteral("deeply_nested_target.txt");
+}
+
+void TestRunner::testEdgeCasePipelineDelimitation() {
+    QFETCH(QString, query);
+    QFETCH(QString, expectedContainedFile);
+
+    ProcessPipeline pipeline;
+    if (!pipeline.isAvailable()) {
+        QSKIP("fd or fzf not installed");
+    }
+
+    const QString root = edgeCasesRoot();
+    if (root.isEmpty() || !QDir(root).exists()) {
+        QSKIP("edge_cases directory not available");
+    }
+
+    QSignalSpy finishedSpy(&pipeline, &ProcessPipeline::searchFinished);
+    pipeline.startSearch(100, QStringList{root}, query, {}, {}, 20, 3000);
+    QVERIFY(finishedSpy.wait(4000));
+    QCOMPARE(finishedSpy.count(), 1);
+
+    const QStringList results = finishedSpy.takeFirst().at(1).toStringList();
+    QVERIFY(!results.isEmpty());
+
+    bool found = false;
+    for (const QString &p : results) {
+        if (p.contains(expectedContainedFile)) {
+            found = true;
+            break;
+        }
+    }
+    QVERIFY2(found, qPrintable(QStringLiteral("Expected '%1' for query '%2', got: %3").arg(expectedContainedFile, query, results.join(u", "))));
+}
+
+void TestRunner::testEdgeCaseConfigCombinations() {
+    ProcessPipeline pipeline;
+    if (!pipeline.isAvailable()) {
+        QSKIP("fd or fzf not installed");
+    }
+
+    const QString root = edgeCasesRoot();
+    if (root.isEmpty() || !QDir(root).exists()) {
+        QSKIP("edge_cases directory not available");
+    }
+
+    // 1. --hidden config integration
+    {
+        // Default search without --hidden should NOT find hidden files
+        QSignalSpy finishedSpy(&pipeline, &ProcessPipeline::searchFinished);
+        pipeline.startSearch(201, QStringList{root}, QStringLiteral("hidden_file"), {}, {}, 20, 2000);
+        QVERIFY(finishedSpy.wait(3000));
+        const QStringList results = finishedSpy.takeFirst().at(1).toStringList();
+        bool foundHidden = false;
+        for (const QString &p : results) {
+            if (p.contains(QLatin1StringView(".hidden_file"))) {
+                foundHidden = true;
+                break;
+            }
+        }
+        QVERIFY(!foundHidden);
+    }
+    {
+        // With extraFdArgs = {"--hidden"}, hidden files should be found
+        QSignalSpy finishedSpy(&pipeline, &ProcessPipeline::searchFinished);
+        pipeline.startSearch(202, QStringList{root}, QStringLiteral("hidden_file"), {QStringLiteral("--hidden")}, {}, 20, 2000);
+        QVERIFY(finishedSpy.wait(3000));
+        const QStringList results = finishedSpy.takeFirst().at(1).toStringList();
+        bool foundHidden = false;
+        for (const QString &p : results) {
+            if (p.contains(QLatin1StringView(".hidden_file"))) {
+                foundHidden = true;
+                break;
+            }
+        }
+        QVERIFY(foundHidden);
+    }
+
+    // 2. --type d vs --type f config integration
+    {
+        // Folders only
+        QSignalSpy finishedSpy(&pipeline, &ProcessPipeline::searchFinished);
+        pipeline.startSearch(203, QStringList{root}, QStringLiteral("chinese_中文"), {QStringLiteral("--type"), QStringLiteral("d")}, {}, 20, 2000);
+        QVERIFY(finishedSpy.wait(3000));
+        const QStringList results = finishedSpy.takeFirst().at(1).toStringList();
+        QVERIFY(!results.isEmpty());
+        for (const QString &p : results) {
+            const QString fullPath = p.startsWith(u'/') ? p : (root + u'/' + p);
+            QVERIFY(QFileInfo(fullPath).isDir());
+        }
+    }
+    {
+        // Files only
+        QSignalSpy finishedSpy(&pipeline, &ProcessPipeline::searchFinished);
+        pipeline.startSearch(204, QStringList{root}, QStringLiteral("chinese_中文"), {QStringLiteral("--type"), QStringLiteral("f")}, {}, 20, 2000);
+        QVERIFY(finishedSpy.wait(3000));
+        const QStringList results = finishedSpy.takeFirst().at(1).toStringList();
+        QVERIFY(!results.isEmpty());
+        for (const QString &p : results) {
+            const QString fullPath = p.startsWith(u'/') ? p : (root + u'/' + p);
+            QVERIFY(QFileInfo(fullPath).isFile());
+        }
+    }
+
+    // 3. --max-depth config integration
+    {
+        // Max depth 3 should NOT reach 10-level nested target
+        QSignalSpy finishedSpy(&pipeline, &ProcessPipeline::searchFinished);
+        pipeline.startSearch(205, QStringList{root}, QStringLiteral("deeply_nested_target"), {QStringLiteral("--max-depth"), QStringLiteral("3")}, {}, 20, 2000);
+        QVERIFY(finishedSpy.wait(3000));
+        const QStringList results = finishedSpy.takeFirst().at(1).toStringList();
+        bool foundTarget = false;
+        for (const QString &p : results) {
+            if (p.contains(QLatin1StringView("deeply_nested_target.txt"))) {
+                foundTarget = true;
+                break;
+            }
+        }
+        QVERIFY(!foundTarget);
+    }
+    {
+        // Max depth 15 should reach 10-level nested target
+        QSignalSpy finishedSpy(&pipeline, &ProcessPipeline::searchFinished);
+        pipeline.startSearch(206, QStringList{root}, QStringLiteral("deeply_nested_target"), {QStringLiteral("--max-depth"), QStringLiteral("15")}, {}, 20, 2000);
+        QVERIFY(finishedSpy.wait(3000));
+        const QStringList results = finishedSpy.takeFirst().at(1).toStringList();
+        bool foundTarget = false;
+        for (const QString &p : results) {
+            if (p.contains(QLatin1StringView("deeply_nested_target.txt"))) {
+                foundTarget = true;
+                break;
+            }
+        }
+        QVERIFY(foundTarget);
+    }
+
+    // 4. --exclude config integration
+    {
+        QSignalSpy finishedSpy(&pipeline, &ProcessPipeline::searchFinished);
+        pipeline.startSearch(207, QStringList{root}, QStringLiteral("café"), {QStringLiteral("--exclude"), QStringLiteral("latin_accents")}, {}, 20, 2000);
+        QVERIFY(finishedSpy.wait(3000));
+        const QStringList results = finishedSpy.takeFirst().at(1).toStringList();
+        bool foundCafe = false;
+        for (const QString &p : results) {
+            if (p.contains(QLatin1StringView("café_menu.pdf"))) {
+                foundCafe = true;
+                break;
+            }
+        }
+        QVERIFY(!foundCafe);
+    }
+
+    // 5. --exact in extraFzfArgs config integration
+    {
+        // Without --exact, fuzzy substring matches
+        QSignalSpy finishedSpy(&pipeline, &ProcessPipeline::searchFinished);
+        pipeline.startSearch(208, QStringList{root}, QStringLiteral("compcss"), {}, {}, 20, 2000);
+        QVERIFY(finishedSpy.wait(3000));
+        const QStringList results = finishedSpy.takeFirst().at(1).toStringList();
+        bool found = false;
+        for (const QString &p : results) {
+            if (p.contains(QLatin1StringView("component.module.css.d.ts"))) {
+                found = true;
+                break;
+            }
+        }
+        QVERIFY(found);
+    }
+    {
+        // With --exact, non-contiguous substring does NOT match
+        QSignalSpy finishedSpy(&pipeline, &ProcessPipeline::searchFinished);
+        pipeline.startSearch(209, QStringList{root}, QStringLiteral("compcss"), {}, {QStringLiteral("--exact")}, 20, 2000);
+        QVERIFY(finishedSpy.wait(3000));
+        const QStringList results = finishedSpy.takeFirst().at(1).toStringList();
+        bool found = false;
+        for (const QString &p : results) {
+            if (p.contains(QLatin1StringView("component.module.css.d.ts"))) {
+                found = true;
+                break;
+            }
+        }
+        QVERIFY(!found);
+    }
+
+    // 6. Multi-Root configuration integration across edge case folders
+    {
+        const QString rootA = QFileInfo(root + QStringLiteral("/01_whitespace_and_spacing")).canonicalFilePath();
+        const QString rootB = QFileInfo(root + QStringLiteral("/03_unicode_and_i18n")).canonicalFilePath();
+        const QStringList multiRoots = {rootA, rootB};
+
+        KSeekRunner runner(multiRoots);
+        QCOMPARE(runner.searchRoots().size(), 2);
+
+        QSignalSpy finishedSpy(&pipeline, &ProcessPipeline::searchFinished);
+        pipeline.startSearch(210, multiRoots, QStringLiteral("inner file"), {}, {}, 20, 2500);
+        QVERIFY(finishedSpy.wait(3000));
+        const QStringList results = finishedSpy.takeFirst().at(1).toStringList();
+        QVERIFY(!results.isEmpty());
+
+        RemoteMatch match = runner.buildMatch(results.first(), 0, results.size());
+        QVERIFY(!match.id.isEmpty());
+        QVERIFY(match.id.startsWith(rootA));
+        QCOMPARE(match.text, QStringLiteral("inner file with space.txt"));
+    }
+}
+
+void TestRunner::testCoreParsingEdgeCases() {
+    // 1. splitArgs edge cases
+    {
+        // Nested single quotes inside double quotes
+        const QString nested1 = QStringLiteral("--title=\"User's Profile\" --type='doc'");
+        QCOMPARE(splitArgs(nested1), QStringList({QStringLiteral("--title=User's Profile"), QStringLiteral("--type=doc")}));
+
+        // Unbalanced double quote
+        const QString unbal1 = QStringLiteral("--opt \"unbalanced string");
+        QCOMPARE(splitArgs(unbal1), QStringList({QStringLiteral("--opt"), QStringLiteral("unbalanced string")}));
+
+        // Trailing backslash
+        const QString trailingBs = QStringLiteral("--path /foo/bar\\");
+        QCOMPARE(splitArgs(trailingBs), QStringList({QStringLiteral("--path"), QStringLiteral("/foo/bar\\")}));
+
+        // Mixed tabs and whitespace
+        const QString tabbed = QStringLiteral(" \t  -a  \t  --b=\"val with spaces\" \n -c ");
+        QCOMPARE(splitArgs(tabbed), QStringList({QStringLiteral("-a"), QStringLiteral("--b=val with spaces"), QStringLiteral("-c")}));
+
+        // Shell chars inside quotes
+        const QString shellChars = QStringLiteral("--pattern=\"[0-9]+ $HOME & ; | < >\"");
+        QCOMPARE(splitArgs(shellChars), QStringList({QStringLiteral("--pattern=[0-9]+ $HOME & ; | < >")}));
+    }
+
+    // 2. parseQuery edge cases
+    {
+        KSeekRunner runner(QStringLiteral("/tmp"));
+        QString term;
+
+        // Multiple colons with prefix 'f'
+        runner.setPrefix(QStringLiteral("f"));
+        QVERIFY(runner.parseQuery(QStringLiteral("f::test"), term));
+        QCOMPARE(term, QStringLiteral(":test"));
+
+        // Colon followed by space
+        QVERIFY(runner.parseQuery(QStringLiteral("f:  spaced_after_colon"), term));
+        QCOMPARE(term, QStringLiteral("spaced_after_colon"));
+
+        // Space before colon
+        QVERIFY(runner.parseQuery(QStringLiteral("f : test"), term));
+        QCOMPARE(term, QStringLiteral(": test"));
+
+        // Emoji query
+        QVERIFY(runner.parseQuery(QStringLiteral("f 🚀_launch"), term));
+        QCOMPARE(term, QStringLiteral("🚀_launch"));
+
+        // Disabled prefix mode ("none")
+        runner.setPrefix(QStringLiteral("none"));
+        QVERIFY(runner.parseQuery(QStringLiteral("plain query"), term));
+        QCOMPARE(term, QStringLiteral("plain query"));
+        QVERIFY(runner.parseQuery(QStringLiteral("f 123"), term));
+        QCOMPARE(term, QStringLiteral("f 123"));
+
+        // Disabled prefix mode ("-")
+        runner.setPrefix(QStringLiteral("-"));
+        QVERIFY(runner.parseQuery(QStringLiteral("some_file.pdf"), term));
+        QCOMPARE(term, QStringLiteral("some_file.pdf"));
+
+        // Symbol prefix
+        runner.setPrefix(QStringLiteral("?"));
+        QVERIFY(runner.parseQuery(QStringLiteral("?  find_me"), term));
+        QCOMPARE(term, QStringLiteral("find_me"));
+    }
+
+    // 3. parseSearchRoots edge cases
+    {
+        const QString home = QFileInfo(QDir::homePath()).canonicalFilePath();
+
+        // Multiple consecutive colons
+        const QString consecutiveColons = QStringLiteral(":::") + home + QStringLiteral("::::") + home + QStringLiteral(":::");
+        const QStringList parsedConsecutive = parseSearchRoots(consecutiveColons);
+        QCOMPARE(parsedConsecutive.size(), 1);
+        QCOMPARE(parsedConsecutive.first(), home);
+
+        // Tilde path
+        const QStringList parsedTilde = parseSearchRoots(QStringLiteral("~/"));
+        QCOMPARE(parsedTilde.size(), 1);
+        QCOMPARE(parsedTilde.first(), home);
+
+        // Deduplication with and without trailing slash
+        const QStringList parsedDups = parseSearchRoots(QStringList{home, home + QStringLiteral("/"), home + QStringLiteral("//")});
+        QCOMPARE(parsedDups.size(), 1);
+        QCOMPARE(parsedDups.first(), home);
+
+        // Non-existent path combined with valid path
+        const QString nonExistent = QStringLiteral("/this/path/does/not/exist/99999");
+        const QStringList parsedMixed = parseSearchRoots(QStringList{nonExistent, home});
+        QCOMPARE(parsedMixed.size(), 1);
+        QCOMPARE(parsedMixed.first(), home);
+    }
+}
+
 QTEST_GUILESS_MAIN(TestRunner)
 #include "test_runner.moc"
+
