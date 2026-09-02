@@ -99,6 +99,7 @@ install(TARGETS kseek DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/plasma-runner-kseek.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/krunner/dbusplugins)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/org.kde.krunner.kseek.service DESTINATION ${CMAKE_INSTALL_DATADIR}/dbus-1/services)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/plasma-runner-kseek.service DESTINATION ${CMAKE_INSTALL_DATADIR}/systemd/user)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/kseek.conf DESTINATION lib/environment.d)
 
 # Unit / Integration Testing
 if(BUILD_TESTING)

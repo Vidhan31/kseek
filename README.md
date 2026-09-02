@@ -1,6 +1,8 @@
-# kseek - fuzzy file search for KRunner
+# kseek: fuzzy file search for KRunner
 
-A KRunner plugin for KDE Plasma that finds files and folders using [fd](https://github.com/sharkdp/fd) and [fzf](https://github.com/junegunn/fzf).
+`kseek` is a C++ search plugin for KDE Plasma 6 KRunner. It lets you find files and folders on your computer by typing partial names, extensions, or fuzzy terms directly into KRunner (`Alt+Space`).
+
+Instead of running a background indexing daemon, `kseek` searches on demand using [fd](https://github.com/sharkdp/fd) and [fzf](https://github.com/junegunn/fzf). Results appear as you type, ready to open, locate in Dolphin, copy, or drag into other applications.
 
 ## Dependencies
 
@@ -44,7 +46,8 @@ sudo pacman -U ./kseek-*.pkg.tar.zst
 
 1. Open **System Settings** > **Search** > **Plasma Search**.
 2. Enable **kseek**.
-3. Restart KRunner with `kquitapp6 krunner` or log out and back in.
+3. (Optional) Increase the plugin priority if you want `kseek` results to appear above other search providers.
+4. Restart KRunner with `kquitapp6 krunner` or log out and back in.
 
 ## Usage
 
@@ -61,23 +64,41 @@ The trigger prefix is configurable or can be disabled for prefixless queries.
 
 ### Available actions
 
-- **Enter**: Open the item in its default application.
-- **Show in folder**: Open Dolphin and select the file.
-- **Copy path**: Copy the absolute path to your clipboard.
-- **Open terminal here**: Open your terminal in the selected directory.
-- **Drag and drop**: Drag the result out of KRunner into another application.
+- **Enter.** Open the file or directory in its default application.
+- **Show in folder.** Open Dolphin and select the file.
+- **Copy path.** Copy the absolute path to your clipboard.
+- **Open terminal here.** Open your terminal in the selected directory.
+- **Drag and drop.** Drag results from KRunner into other applications.
 
 ## Search customization
 
-`kseek` delegates path discovery to `fd` and filtering to `fzf`:
+`kseek` delegates file traversal to `fd` and match filtering to `fzf`:
 
-- **Ignore files**: `fd` automatically respects `~/.config/fd/ignore` and `.gitignore` rules.
-- **Fzf syntax**: Use standard `fzf` patterns like `'exact` or `.pdf$` to filter results.
-- **Extra arguments**: Pass additional CLI flags using `KSEEK_FD_ARGS` and `KSEEK_FZF_ARGS`. Quoting with single quotes, double quotes, and backslash escapes is supported.
+- **Ignore rules.** `fd` respects `~/.config/fd/ignore` and `.gitignore` files automatically.
+- **Fzf syntax.** Use standard `fzf` patterns like `'exact` or `.pdf$` to filter results.
+- **Multi-root search.** Search across multiple directories simultaneously by passing multiple `--root` arguments or colon-separated paths in `KSEEK_ROOT`.
+- **Extra arguments.** Pass additional flags through `KSEEK_FD_ARGS` and `KSEEK_FZF_ARGS`. Quoting with single quotes, double quotes, and backslash escapes is supported.
 
 ## Configuration
 
-Configure `kseek` through environment variables or command-line flags. For systemd user sessions, define variables in `~/.config/environment.d/kseek.conf` or edit the user service unit.
+Configure `kseek` using environment variables or command-line arguments.
+
+Package installations place an empty `kseek.conf` file in `/usr/lib/environment.d/kseek.conf`. Local development installations create an empty user config at `~/.config/environment.d/kseek.conf`.
+
+To customize settings for normal desktop use with KRunner or systemd, add your environment variables to `~/.config/environment.d/kseek.conf`:
+
+```bash
+KSEEK_PREFIX="f"
+KSEEK_ROOT="/home/user/Projects:/home/user/Documents"
+KSEEK_MAX_RESULTS="30"
+```
+
+Reload the user environment and restart the service after modifying `kseek.conf`:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user restart plasma-runner-kseek.service
+```
 
 ### Environment variables
 
@@ -97,7 +118,17 @@ Configure `kseek` through environment variables or command-line flags. For syste
 
 ### Command-line options
 
-`kseek` provides CLI options that override environment variables:
+In typical usage, KRunner launches `kseek` automatically via D-Bus activation or the systemd user service.
+
+You can also run `kseek` directly from the terminal or in custom scripts. Command-line options override any environment variables.
+
+When testing or running `kseek` from the terminal while a background instance is already active, pass `--replace` so the process takes over the D-Bus service registration:
+
+```bash
+kseek --replace --debug --prefix "find" --root "$HOME/Projects"
+```
+
+Available options:
 
 ```text
 Usage: kseek [options]
@@ -110,28 +141,21 @@ Options:
   -m, --max-results <count>  Maximum results returned (default: 20).
   -t, --timeout <seconds>    Query timeout in seconds (default: 2.5).
   -d, --debounce <ms>        Search debounce in milliseconds (default: 75).
-  --fd-args <args>           Extra arguments passed to fd.
-  --fzf-args <args>          Extra arguments passed to fzf.
+  --fd-args <args>           Extra arguments passed to fd (e.g. "--hidden --follow").
+  --fzf-args <args>          Extra arguments passed to fzf (e.g. "--exact").
   --fd-bin <path>            Path to fd / fdfind executable.
   --fzf-bin <path>           Path to fzf executable.
   --replace                  Replace an already running kseek instance on D-Bus.
   --debug                    Enable verbose debug logging.
 ```
 
-Reload the user service after editing configuration files:
-
-```bash
-systemctl --user daemon-reload
-systemctl --user restart plasma-runner-kseek.service
-```
-
 ## Performance
 
-Rewriting the runner daemon in C++ with Qt 6 reduced memory usage and startup latency compared to the Python baseline.
+`kseek` was originally written in Python. Rewriting the runner daemon in C++ with Qt 6 eliminated interpreter startup overhead and significantly cut memory footprint.
 
-Measured on an AMD Ryzen 5 3600 running Fedora 44 and KDE Plasma 6.7:
+The benchmark compares the current C++ (Qt 6) binary directly against the previous Python implementation under identical search queries. Measured on an AMD Ryzen 5 3600 running Fedora 44 and KDE Plasma 6.7:
 
-| Metric | C++ (Qt 6) | Python baseline | Difference |
+| Metric | C++ (Qt 6) | Python (previous) | Difference |
 | :--- | :--- | :--- | :--- |
 | Startup latency (D-Bus ready) | 8.6 ms | 91.7 ms | ~10.7x faster |
 | Private RAM (`RssAnon`) | 1.4 MB | 16.0 MB | ~11.8x lower |
@@ -171,6 +195,8 @@ docker build -f packaging/Dockerfile.pkg --target export --output type=local,des
 ```
 
 ### Run tests
+
+The test suite runs unit and integration tests against edge-case fixtures covering Unicode, dotfiles, symlinks, compound extensions, and case sensitivity:
 
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON

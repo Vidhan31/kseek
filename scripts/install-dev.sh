@@ -157,6 +157,15 @@ fi
 log_info "Installing kseek to ${PREFIX}..."
 cmake --install "$BUILD_DIR" --prefix "$PREFIX"
 
+# Ensure user configuration file exists
+USER_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/environment.d"
+USER_CONFIG_FILE="${USER_CONFIG_DIR}/kseek.conf"
+if [[ ! -f "$USER_CONFIG_FILE" ]]; then
+    log_info "Creating empty user configuration at ${USER_CONFIG_FILE}..."
+    mkdir -p "$USER_CONFIG_DIR"
+    touch "$USER_CONFIG_FILE"
+fi
+
 # 6. Service reload and session refresh
 if [[ "$RESTART_SERVICES" -eq 1 ]]; then
     log_info "Refreshing systemd user daemon and Plasma runner cache..."
@@ -189,6 +198,8 @@ echo "  - Binary:          ${PREFIX}/bin/kseek"
 echo "  - Runner Desktop:  ${PREFIX}/share/krunner/dbusplugins/plasma-runner-kseek.desktop"
 echo "  - D-Bus Service:   ${PREFIX}/share/dbus-1/services/org.kde.krunner.kseek.service"
 echo "  - Systemd Service: ${PREFIX}/share/systemd/user/plasma-runner-kseek.service"
+echo "  - User Config:     ${USER_CONFIG_FILE}"
+echo "  - Prefix Config:   ${PREFIX}/lib/environment.d/kseek.conf"
 echo ""
 
 # Check PATH

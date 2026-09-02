@@ -95,6 +95,7 @@ FILES=(
     "${PREFIX}/share/krunner/dbusplugins/plasma-runner-kseek.desktop"
     "${PREFIX}/share/dbus-1/services/org.kde.krunner.kseek.service"
     "${PREFIX}/share/systemd/user/plasma-runner-kseek.service"
+    "${PREFIX}/lib/environment.d/kseek.conf"
     "${HOME}/.config/systemd/user/plasma-runner-kseek.service"
 )
 
