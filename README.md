@@ -1,5 +1,9 @@
 # kseek: fuzzy file search for KRunner
 
+
+https://github.com/user-attachments/assets/c71b2907-5e37-449d-8100-d00c71dba510
+
+
 `kseek` is a C++ search plugin for KDE Plasma 6 KRunner. It lets you find files and folders on your computer by typing partial names, extensions, or fuzzy terms directly into KRunner (`Alt+Space`).
 
 Instead of running a background indexing daemon, `kseek` searches on demand using [fd](https://github.com/sharkdp/fd) and [fzf](https://github.com/junegunn/fzf). Results appear as you type, ready to open, locate in Dolphin, copy, or drag into other applications.
