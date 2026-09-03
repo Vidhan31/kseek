@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-09-03
+
+### Fixed
+- Preserved whitespace in queries passed to `fzf`.
+- Formatted home directory result paths with `~/` in KRunner matches.
+
+### Changed
+- Updated README with a quick start guide, configuration recipes, and links to `fd` and `fzf` documentation.
+
 ## [1.2.0] - 2026-09-03
 
 ### Changed
@@ -30,7 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Swapped external `head` and `awk` processes for in-process parsing and scoring.
 - Moved packaging files into `packaging/` and service files into `src/`.
 
-[Unreleased]: https://github.com/vidhan31/kseek/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/vidhan31/kseek/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/vidhan31/kseek/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/vidhan31/kseek/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/vidhan31/kseek/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/vidhan31/kseek/releases/tag/v1.0.0
