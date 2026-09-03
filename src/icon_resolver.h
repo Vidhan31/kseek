@@ -10,7 +10,6 @@ public:
     IconResolver();
     ~IconResolver() = default;
 
-    // Non-copyable
     IconResolver(const IconResolver &) = delete;
     IconResolver &operator=(const IconResolver &) = delete;
 

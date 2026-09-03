@@ -25,12 +25,10 @@ static void signalHandler(int /*sig*/) {
 }
 
 int main(int argc, char *argv[]) {
-    // Headless QtCore application - zero GUI subsystem overhead
     QCoreApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("kseek"));
     app.setApplicationVersion(QStringLiteral(KSEEK_VERSION));
 
-    // CLI option parser
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("Fast fuzzy file search runner for KDE Plasma 6 using fd and fzf"));
     parser.addHelpOption();

@@ -134,7 +134,6 @@ KSeekConfig KSeekConfig::loadFromEnvironment() {
     KSeekConfig cfg;
     const QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
 
-    // Prefix: check KSEEK_PREFIX, fallback to KSEEK_TRIGGER, fallback to KRUNNER_FZF_FD_PREFIX
     if (env.contains(QStringLiteral("KSEEK_PREFIX"))) {
         cfg.prefix = env.value(QStringLiteral("KSEEK_PREFIX"));
     } else if (env.contains(QStringLiteral("KSEEK_TRIGGER"))) {
@@ -145,14 +144,12 @@ KSeekConfig KSeekConfig::loadFromEnvironment() {
         cfg.prefix = QStringLiteral("f");
     }
 
-    // Search roots: check KSEEK_ROOT, fallback to KRUNNER_FZF_FD_ROOT, fallback to home
     QString root = env.value(QStringLiteral("KSEEK_ROOT"));
     if (root.isEmpty()) {
         root = env.value(QStringLiteral("KRUNNER_FZF_FD_ROOT"));
     }
     cfg.searchRoots = parseSearchRoots(root);
 
-    // Max results: check KSEEK_MAX_RESULTS, fallback to KRUNNER_FZF_FD_MAX_RESULTS
     bool ok = false;
     QString maxResultsStr = env.value(QStringLiteral("KSEEK_MAX_RESULTS"));
     if (maxResultsStr.isEmpty()) {
@@ -165,7 +162,6 @@ KSeekConfig KSeekConfig::loadFromEnvironment() {
         }
     }
 
-    // Timeout: check KSEEK_TIMEOUT, fallback to KRUNNER_FZF_FD_TIMEOUT
     QString timeoutStr = env.value(QStringLiteral("KSEEK_TIMEOUT"));
     if (timeoutStr.isEmpty()) {
         timeoutStr = env.value(QStringLiteral("KRUNNER_FZF_FD_TIMEOUT"));
@@ -177,7 +173,6 @@ KSeekConfig KSeekConfig::loadFromEnvironment() {
         }
     }
 
-    // Debounce: check KSEEK_DEBOUNCE, fallback to KRUNNER_FZF_FD_DEBOUNCE
     QString debounceStr = env.value(QStringLiteral("KSEEK_DEBOUNCE"));
     if (debounceStr.isEmpty()) {
         debounceStr = env.value(QStringLiteral("KRUNNER_FZF_FD_DEBOUNCE"));
@@ -189,7 +184,6 @@ KSeekConfig KSeekConfig::loadFromEnvironment() {
         }
     }
 
-    // Extra fd / fzf args
     const QString extraFdStr = env.value(QStringLiteral("KSEEK_FD_ARGS"));
     if (!extraFdStr.isEmpty()) {
         cfg.extraFdArgs = splitArgs(extraFdStr);
@@ -200,11 +194,9 @@ KSeekConfig KSeekConfig::loadFromEnvironment() {
         cfg.extraFzfArgs = splitArgs(extraFzfStr);
     }
 
-    // Custom binary paths
     cfg.fdBin = env.value(QStringLiteral("KSEEK_FD_BIN"));
     cfg.fzfBin = env.value(QStringLiteral("KSEEK_FZF_BIN"));
 
-    // Debug logging
     cfg.debug = env.value(QStringLiteral("KSEEK_DEBUG")) == QStringLiteral("1");
 
     return cfg;

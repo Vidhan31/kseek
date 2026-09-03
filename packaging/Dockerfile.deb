@@ -54,7 +54,7 @@ Description: Fuzzy file search KRunner plugin using fd + fzf\n\
  Feeds paths from fd into fzf over D-Bus.\n' > debian/control
 
 RUN VERSION=$(cat VERSION | tr -d '[:space:]') && \
-    printf 'kseek (%s-1) unstable; urgency=low\n\n  * Package build.\n\n -- Vidhan Bhatt <heyitsmedevfr@gmail.com>  Wed, 02 Sep 2026 00:00:00 +0000\n' "$VERSION" > debian/changelog
+    printf 'kseek (%s-1) unstable; urgency=low\n\n  * Package build.\n\n -- Vidhan Bhatt <heyitsmedevfr@gmail.com>  Thu, 03 Sep 2026 00:00:00 +0000\n' "$VERSION" > debian/changelog
 
 RUN printf '#!/usr/bin/make -f\n\
 %%:\n\

@@ -271,7 +271,6 @@ void ProcessPipeline::onFzfFinished(int exitCode, QProcess::ExitStatus /*exitSta
 
     qCInfo(lcPipeline) << "fzf finished exitCode:" << exitCode << "output bytes:" << rawOutput.size();
 
-    // 0 = matches found, 1 = no matches found (valid fzf exit code)
     if (exitCode != 0 && exitCode != 1) {
         const QString err = QString::fromUtf8(rawStderr).trimmed();
         qCWarning(lcPipeline) << "fzf exited with code" << exitCode << ":" << err;

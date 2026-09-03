@@ -30,12 +30,10 @@ public:
     void config();
     void setActivationToken(const QString &token);
 
-    // Prefix & query parsing
     QString prefix() const { return m_prefix; }
     void setPrefix(const QString &prefix);
     bool parseQuery(const QString &query, QString &searchTerm) const;
 
-    // Configuration accessors for testing & inspection
     const KSeekConfig &currentConfig() const { return m_config; }
     void applyConfig(const KSeekConfig &config);
 

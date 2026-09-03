@@ -7,7 +7,6 @@
 #include <QtDBus/QDBusArgument>
 #include <QtDBus/QDBusMetaType>
 
-// RemoteAction: (sss) -> (id, text, icon)
 struct RemoteAction {
     QString id;
     QString text;
@@ -42,7 +41,6 @@ namespace CategoryRelevance {
     constexpr int Highest = 100;
 }
 
-// RemoteMatch: (sssida{sv}) -> (id, text, icon, categoryRelevance, relevance, properties)
 struct RemoteMatch {
     QString id;
     QString text;

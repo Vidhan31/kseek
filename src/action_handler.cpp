@@ -152,7 +152,6 @@ void ActionHandler::openTerminal(const QString &filePath) {
         env.insert(QStringLiteral("XDG_ACTIVATION_TOKEN"), m_activationToken);
     }
 
-    // Check user's preferred $TERMINAL environment variable first
     const QString customTerm = env.value(QStringLiteral("TERMINAL"));
     if (!customTerm.isEmpty()) {
         const QString termBin = QStandardPaths::findExecutable(customTerm);

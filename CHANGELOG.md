@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-03
+
+### Changed
+- Refactored process pipeline to rely on standard `fzf` defaults, removing hardcoded `--scheme=path`, `--algo=v2`, and `--tiebreak` flags.
+- Preserved user-configured `FZF_DEFAULT_OPTS`, `FZF_DEFAULT_COMMAND`, and `FZF_DEFAULT_OPTS_FILE` environment variables.
+- Added `--no-print-query` to prevent search queries from being echoed as candidate file paths when `--print-query` is set in user environments.
+
+### Documentation
+- Updated README with visual demonstrations showing kseek in action.
+
 ## [1.1.0] - 2026-09-02
 
 ### Added
@@ -20,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Swapped external `head` and `awk` processes for in-process parsing and scoring.
 - Moved packaging files into `packaging/` and service files into `src/`.
 
-[Unreleased]: https://github.com/vidhan31/kseek/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/vidhan31/kseek/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/vidhan31/kseek/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/vidhan31/kseek/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/vidhan31/kseek/releases/tag/v1.0.0
