@@ -1,0 +1,2 @@
+MetaDataFile=plasma-runner-kseek.desktop
+Exec=%{PROJECTDIR}/kseek --replace

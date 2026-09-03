@@ -73,6 +73,20 @@ target_link_libraries(kseek PRIVATE
     kseek_core
 )
 
+option(STATIC_RUNTIME "Link libstdc++ and libgcc statically for portable binary distribution" OFF)
+if(STATIC_RUNTIME)
+    include(CheckCXXSourceCompiles)
+    set(CMAKE_REQUIRED_LINK_OPTIONS "-static-libstdc++" "-static-libgcc")
+    check_cxx_source_compiles("int main() { return 0; }" HAVE_STATIC_LIBSTDCXX)
+    unset(CMAKE_REQUIRED_LINK_OPTIONS)
+    if(HAVE_STATIC_LIBSTDCXX)
+        message(STATUS "Enabling static libstdc++ and libgcc linking")
+        target_link_options(kseek PRIVATE -static-libstdc++ -static-libgcc)
+    else()
+        message(WARNING "STATIC_RUNTIME was requested, but static libstdc++ is not available on this system. Building with standard dynamic linking.")
+    endif()
+endif()
+
 # Configuration & Service Files
 if(NOT DEFINED KSEEK_EXECUTABLE)
     set(KSEEK_EXECUTABLE "${CMAKE_INSTALL_FULL_BINDIR}/kseek")
@@ -88,18 +102,11 @@ configure_file(
     ${CMAKE_CURRENT_BINARY_DIR}/org.kde.krunner.kseek.service
     @ONLY
 )
-configure_file(
-    src/plasma-runner-kseek.service.in
-    ${CMAKE_CURRENT_BINARY_DIR}/plasma-runner-kseek.service
-    @ONLY
-)
 
 # Installation rules
 install(TARGETS kseek DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/plasma-runner-kseek.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/krunner/dbusplugins)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/org.kde.krunner.kseek.service DESTINATION ${CMAKE_INSTALL_DATADIR}/dbus-1/services)
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/plasma-runner-kseek.service DESTINATION ${CMAKE_INSTALL_DATADIR}/systemd/user)
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/kseek.conf DESTINATION lib/environment.d)
 
 # Unit / Integration Testing
 if(BUILD_TESTING)

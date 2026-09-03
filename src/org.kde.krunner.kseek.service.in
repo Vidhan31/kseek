@@ -1,4 +1,3 @@
 [D-BUS Service]
 Name=org.kde.krunner.kseek
 Exec=@KSEEK_EXECUTABLE@
-SystemdService=plasma-runner-kseek.service

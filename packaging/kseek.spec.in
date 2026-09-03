@@ -37,8 +37,6 @@ indexing daemon in the background.
 %{_bindir}/kseek
 %{_datadir}/krunner/dbusplugins/plasma-runner-kseek.desktop
 %{_datadir}/dbus-1/services/org.kde.krunner.kseek.service
-%{_datadir}/systemd/user/plasma-runner-kseek.service
-%{_prefix}/lib/environment.d/kseek.conf
 
 %changelog
 * Thu Sep 03 2026 Vidhan Bhatt <heyitsmedevfr@gmail.com> - @VERSION@-1

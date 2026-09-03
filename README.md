@@ -6,9 +6,12 @@ https://github.com/user-attachments/assets/c71b2907-5e37-449d-8100-d00c71dba510
 
 ## Quick start
 
-1. Install the package for your distribution (`.deb`, `.rpm`, or `.pkg.tar.zst`) from [GitHub Releases](https://github.com/vidhan31/kseek/releases). If you are unsure or need dependency instructions, see the [Installation](#installation) section.
-2. Open **System Settings** > **Search** > **Plasma Search** and enable **kseek**.
-3. Open KRunner (`Alt+Space`) and type `f` followed by your search term:
+1. **Install kseek:**
+   - **KDE Store (Recommended):** Open **System Settings** > **Search** > **Plasma Search** > **Get New Plugins...**, search for **kseek**, and click **Install**.
+   - **Distribution package:** Install `.deb`, `.rpm`, or `.pkg.tar.zst` from [GitHub Releases](https://github.com/vidhan31/kseek/releases).
+2. Ensure external dependencies `fd` and `fzf` are installed (see [Dependencies](#dependencies)).
+3. Make sure **kseek** is enabled under **System Settings** > **Search** > **Plasma Search**.
+4. Open KRunner (`Alt+Space` or `Meta`) and search:
 
 ```text
 f resume pdf
@@ -80,11 +83,11 @@ KSEEK_FD_ARGS='--hidden --exclude "node_modules"'
 KSEEK_FZF_ARGS='--exact'
 ```
 
-After editing `kseek.conf`, reload your user environment and restart the runner service:
+After editing `kseek.conf`, terminate any running instance and reload KRunner:
 
 ```bash
-systemctl --user daemon-reload
-systemctl --user restart plasma-runner-kseek.service
+pkill -x kseek
+kquitapp6 krunner
 ```
 
 ### Configuration recipes
@@ -170,21 +173,33 @@ Rewriting the runner daemon from Python to C++ with Qt 6 reduced D-Bus startup l
 
 ## Installation
 
+### KDE Store (Recommended)
+
+You can install `kseek` directly from the Plasma desktop interface:
+
+1. Open **System Settings** > **Search** > **Plasma Search**.
+2. Click **Get New Plugins...** in the bottom-right corner.
+3. Search for **kseek** and click **Install**.
+
+You can also browse or download the package directly from [store.kde.org](https://store.kde.org).
+
+### Distribution Packages
+
 Prebuilt packages are available on [GitHub Releases](https://github.com/vidhan31/kseek/releases).
 
-### Debian and Ubuntu (`.deb`)
+#### Debian and Ubuntu (`.deb`)
 
 ```bash
 sudo apt install ./kseek_*_amd64.deb
 ```
 
-### Fedora (`.rpm`)
+#### Fedora (`.rpm`)
 
 ```bash
 sudo dnf install ./kseek-*.rpm
 ```
 
-### Arch Linux (`.pkg.tar.zst`)
+#### Arch Linux (`.pkg.tar.zst`)
 
 ```bash
 sudo pacman -U ./kseek-*.pkg.tar.zst
@@ -192,13 +207,14 @@ sudo pacman -U ./kseek-*.pkg.tar.zst
 
 ### Dependencies
 
-`kseek` requires `fd` and `fzf`. The native packages declare these as dependencies and install them automatically.
+`kseek` requires `fd` and `fzf`. Native distribution packages (`.deb`, `.rpm`, `.pkg.tar.zst`) declare these as dependencies and install them automatically.
 
-To install dependencies manually:
+If you install via the **KDE Store**, install the dependencies using your package manager:
 
 - Debian/Ubuntu: `sudo apt install fd-find fzf`
 - Arch Linux: `sudo pacman -S fd fzf`
 - Fedora: `sudo dnf install fd-find fzf`
+- openSUSE: `sudo zypper install fd fzf`
 
 ### Custom binary installations
 
@@ -226,7 +242,7 @@ To install packages without pulling distribution package dependencies:
 
 ### Command-line options
 
-KRunner starts `kseek` automatically via D-Bus activation or systemd. You can also run `kseek` manually in a terminal or custom script. Command-line flags take precedence over environment variables.
+KRunner starts `kseek` automatically via D-Bus session activation. You can also run `kseek` manually in a terminal or custom script. Command-line flags take precedence over environment variables.
 
 When testing in a terminal while a service is running, use `--replace` to take over the D-Bus registration:
 
@@ -309,6 +325,9 @@ busctl --user call org.kde.krunner.kseek /kseek org.kde.krunner1 Match s "f resu
 Package builds output to `dist/`:
 
 ```bash
+# KDE Store / KNewStuff package (.tar.gz built on Ubuntu 24.04 glibc baseline)
+docker build -f packaging/Dockerfile.kdestore --target export --output type=local,dest=./dist .
+
 # Debian / Ubuntu (.deb)
 docker build -f packaging/Dockerfile.deb --target export --output type=local,dest=./dist .
 

@@ -80,14 +80,17 @@ done
 
 log_info "Stopping kseek services and processes..."
 
-# Stop and disable systemd service if running
+# Stop and disable systemd service if lingering
 if command -v systemctl >/dev/null 2>&1; then
     systemctl --user stop plasma-runner-kseek.service 2>/dev/null || true
     systemctl --user disable plasma-runner-kseek.service 2>/dev/null || true
+    systemctl --user stop plasma-runner-fzf-fd.service 2>/dev/null || true
+    systemctl --user disable plasma-runner-fzf-fd.service 2>/dev/null || true
 fi
 
 # Terminate any running process
 pkill -x kseek 2>/dev/null || true
+pkill -f "kseek.py" 2>/dev/null || true
 
 # Target files to delete
 FILES=(
@@ -97,6 +100,16 @@ FILES=(
     "${PREFIX}/share/systemd/user/plasma-runner-kseek.service"
     "${PREFIX}/lib/environment.d/kseek.conf"
     "${HOME}/.config/systemd/user/plasma-runner-kseek.service"
+    "${HOME}/.local/share/systemd/user/plasma-runner-kseek.service"
+    "${HOME}/.config/systemd/user/plasma-runner-fzf-fd.service"
+    "${HOME}/.local/share/systemd/user/plasma-runner-fzf-fd.service"
+    "${HOME}/.local/share/krunner/dbusplugins/plasma-runner-fzf-fd.desktop"
+    "${HOME}/.local/share/dbus-1/services/org.kde.krunner.fzf_fd.service"
+)
+
+LEGACY_DIRS=(
+    "${HOME}/.local/share/kseek"
+    "${HOME}/.local/share/krunner-fzf-fd"
 )
 
 log_info "Removing installed kseek files from ${PREFIX}..."
@@ -104,7 +117,15 @@ REMOVED_COUNT=0
 for file in "${FILES[@]}"; do
     if [[ -f "$file" || -L "$file" ]]; then
         rm -f "$file"
-        echo "  - Removed: $file"
+        echo "  - Removed file: $file"
+        REMOVED_COUNT=$((REMOVED_COUNT + 1))
+    fi
+done
+
+for dir in "${LEGACY_DIRS[@]}"; do
+    if [[ -d "$dir" ]]; then
+        rm -rf "$dir"
+        echo "  - Removed legacy directory: $dir"
         REMOVED_COUNT=$((REMOVED_COUNT + 1))
     fi
 done
@@ -114,9 +135,9 @@ rmdir "${PREFIX}/share/krunner/dbusplugins" 2>/dev/null || true
 rmdir "${PREFIX}/share/krunner" 2>/dev/null || true
 
 if [[ "$REMOVED_COUNT" -eq 0 ]]; then
-    log_warn "No installed files were found under ${PREFIX}."
+    log_warn "No installed or legacy files were found under ${PREFIX}."
 else
-    log_success "Removed ${REMOVED_COUNT} file(s)."
+    log_success "Removed ${REMOVED_COUNT} file(s) and directory(ies)."
 fi
 
 # Clean build directory if requested

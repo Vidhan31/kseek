@@ -168,15 +168,11 @@ fi
 
 # 6. Service reload and session refresh
 if [[ "$RESTART_SERVICES" -eq 1 ]]; then
-    log_info "Refreshing systemd user daemon and Plasma runner cache..."
+    log_info "Terminating stale instances and refreshing Plasma runner cache..."
 
     # Terminate any existing running instance
     pkill -x kseek 2>/dev/null || true
-
-    # Reload systemd user daemon if available
-    if command -v systemctl >/dev/null 2>&1; then
-        systemctl --user daemon-reload 2>/dev/null || true
-    fi
+    pkill -f "kseek.py" 2>/dev/null || true
 
     # Update KDE Sycoca service cache so KRunner picks up new desktop entry
     if command -v kbuildsycoca6 >/dev/null 2>&1; then
@@ -197,9 +193,7 @@ echo -e "${BOLD}Installed components:${RESET}"
 echo "  - Binary:          ${PREFIX}/bin/kseek"
 echo "  - Runner Desktop:  ${PREFIX}/share/krunner/dbusplugins/plasma-runner-kseek.desktop"
 echo "  - D-Bus Service:   ${PREFIX}/share/dbus-1/services/org.kde.krunner.kseek.service"
-echo "  - Systemd Service: ${PREFIX}/share/systemd/user/plasma-runner-kseek.service"
 echo "  - User Config:     ${USER_CONFIG_FILE}"
-echo "  - Prefix Config:   ${PREFIX}/lib/environment.d/kseek.conf"
 echo ""
 
 # Check PATH
@@ -217,8 +211,8 @@ echo ""
 echo "  2. Test in KRunner:"
 echo "     Press Alt+Space (or Meta) and type 'f <query>'"
 echo ""
-echo "  3. View live runner logs:"
-echo "     journalctl --user -u plasma-runner-kseek.service -f"
+echo "  3. To run kseek directly with verbose logging:"
+echo "     ${PREFIX}/bin/kseek --debug"
 echo ""
 echo "  4. To uninstall:"
 echo "     ./scripts/uninstall-dev.sh --prefix \"${PREFIX}\""

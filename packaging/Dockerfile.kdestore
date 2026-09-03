@@ -1,0 +1,37 @@
+# syntax=docker/dockerfile:1
+
+# ── Stage 1: Build on Ubuntu 24.04 (glibc 2.39 baseline for broad Plasma 6 compatibility) ──
+FROM ubuntu:24.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    ninja-build \
+    qt6-base-dev \
+    qt6-base-dev-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY . .
+
+RUN VERSION=$(cat VERSION | tr -d '[:space:]') && \
+    cmake -B /build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DSTATIC_RUNTIME=ON \
+        -DBUILD_TESTING=OFF && \
+    cmake --build /build --target kseek && \
+    mkdir -p /dist /tmp/staging && \
+    install -m 0755 /build/kseek /tmp/staging/kseek && \
+    install -m 0644 packaging/krunner-plugininstallerrc /tmp/staging/krunner-plugininstallerrc && \
+    sed "s/@PROJECT_VERSION@/${VERSION}/g" src/plasma-runner-kseek.desktop.in > /tmp/staging/plasma-runner-kseek.desktop && \
+    chmod 0644 /tmp/staging/plasma-runner-kseek.desktop && \
+    install -m 0644 README.md /tmp/staging/README.md && \
+    install -m 0644 LICENSE /tmp/staging/LICENSE && \
+    ARCH=$(uname -m) && \
+    tar -czf "/dist/kseek-v${VERSION}-linux-${ARCH}.tar.gz" -C /tmp/staging .
+
+# ── Stage 2: Export ──────────────────────────────────────────────────
+FROM scratch AS export
+COPY --from=builder /dist/*.tar.gz /
