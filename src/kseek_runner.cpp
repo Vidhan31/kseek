@@ -71,39 +71,48 @@ void KSeekRunner::setPrefix(const QString &prefix) {
 }
 
 bool KSeekRunner::parseQuery(const QString &query, QString &searchTerm) const {
-    const QStringView trimmed = QStringView(query).trimmed();
-    if (trimmed.isEmpty()) {
+    if (query.isEmpty()) {
         return false;
     }
 
     if (m_prefix.isEmpty()) {
-        searchTerm = trimmed.toString();
+        if (query.trimmed().isEmpty()) {
+            return false;
+        }
+        searchTerm = query;
         return true;
     }
 
-    if (trimmed.size() <= m_prefix.size()) {
+    if (query.size() <= m_prefix.size()) {
         return false;
     }
 
-    if (!trimmed.startsWith(m_prefix, Qt::CaseInsensitive)) {
+    if (!query.startsWith(m_prefix, Qt::CaseInsensitive)) {
         return false;
     }
 
     const QChar lastPrefixChar = m_prefix.at(m_prefix.size() - 1);
     const bool isAlphanumeric = lastPrefixChar.isLetterOrNumber();
 
-    QStringView remainder = trimmed.sliced(m_prefix.size());
+    QStringView remainder = QStringView(query).sliced(m_prefix.size());
 
     if (isAlphanumeric) {
         if (remainder.startsWith(u':')) {
-            remainder = remainder.sliced(1).trimmed();
+            remainder = remainder.sliced(1);
+            while (!remainder.isEmpty() && remainder.at(0).isSpace()) {
+                remainder = remainder.sliced(1);
+            }
         } else if (remainder.at(0).isSpace()) {
-            remainder = remainder.trimmed();
+            while (!remainder.isEmpty() && remainder.at(0).isSpace()) {
+                remainder = remainder.sliced(1);
+            }
         } else {
             return false;
         }
     } else {
-        remainder = remainder.trimmed();
+        while (!remainder.isEmpty() && remainder.at(0).isSpace()) {
+            remainder = remainder.sliced(1);
+        }
     }
 
     if (remainder.isEmpty()) {
@@ -217,6 +226,28 @@ static const QString s_urlsKey = QStringLiteral("urls");
 static const QString s_actionsKey = QStringLiteral("actions");
 static const QString s_multilineKey = QStringLiteral("multiline");
 
+static QString toDisplayPath(const QString &path) {
+    const QString home = QDir::homePath();
+    if (path == home) {
+        return QStringLiteral("~");
+    }
+    if (path.startsWith(home + u'/')) {
+        return QStringLiteral("~") + path.sliced(home.size());
+    }
+
+    const QString canonicalHome = QFileInfo(home).canonicalFilePath();
+    if (!canonicalHome.isEmpty() && canonicalHome != home) {
+        if (path == canonicalHome) {
+            return QStringLiteral("~");
+        }
+        if (path.startsWith(canonicalHome + u'/')) {
+            return QStringLiteral("~") + path.sliced(canonicalHome.size());
+        }
+    }
+
+    return path;
+}
+
 RemoteMatch KSeekRunner::buildMatch(const QString &relPath, int rank, int total) {
     QString cleanRel = relPath;
     if (cleanRel.startsWith(QLatin1StringView("./"))) {
@@ -241,11 +272,12 @@ RemoteMatch KSeekRunner::buildMatch(const QString &relPath, int rank, int total)
         return RemoteMatch{};
     }
 
+    const QString displayPath = toDisplayPath(fullPath);
     const bool isDir = fi.isDir();
     const qsizetype lastSlash = cleanRel.lastIndexOf(u'/');
     QString text = (lastSlash == -1) ? cleanRel : cleanRel.sliced(lastSlash + 1);
     if (text.isEmpty()) {
-        text = fullPath;
+        text = displayPath;
     }
 
     const QString icon = m_iconResolver.resolve(fullPath, isDir);
@@ -253,7 +285,7 @@ RemoteMatch KSeekRunner::buildMatch(const QString &relPath, int rank, int total)
     const QString fileUri = QUrl::fromLocalFile(fullPath).toString();
 
     QVariantMap props;
-    props.insert(s_subtextKey, fullPath);
+    props.insert(s_subtextKey, displayPath);
     props.insert(s_categoryKey, s_categoryFiles);
     props.insert(s_urlsKey, QStringList{fileUri});
     props.insert(s_actionsKey, s_defaultActions);

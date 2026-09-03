@@ -83,7 +83,10 @@ f taxes 2025
 f config.json
 ```
 
-The trigger prefix is configurable or can be disabled for prefixless queries.
+The trigger prefix is configurable or can be disabled for prefixless queries. Results show clean `~/` paths for files in your home directory, and full paths (like `/mnt/storage/...`) for external locations.
+
+> [!NOTE]
+> **Path visibility**: KRunner displays a file's folder path when you highlight or hover over a result (or automatically if several files share the same name). For particularly long filenames, KRunner may hide the path to keep the name readable—you can always check the full path by hovering over the result or using the **Copy path** action.
 
 ### Available actions
 
@@ -99,7 +102,10 @@ The trigger prefix is configurable or can be disabled for prefixless queries.
 
 - **Ignore rules.** `fd` respects `~/.config/fd/ignore` and `.gitignore` files automatically.
 - **Fzf syntax.** Use standard `fzf` patterns like `'exact` or `.pdf$` to filter results.
-- **Multi-root search.** Search across multiple directories simultaneously by passing multiple `--root` arguments or colon-separated paths in `KSEEK_ROOT`.
+- **Default search root (`$HOME`).** By default, `kseek` searches `$HOME`. While standalone `fd` defaults to the current working directory (`.`), a desktop runner runs as a background D-Bus service where the working directory is not tied to a terminal. Explicitly defaulting to `$HOME` ensures predictable search coverage and reliable absolute path resolution for desktop actions.
+- **Multi-root search and replacement.** Search across multiple directories simultaneously by passing multiple `--root` arguments or colon-separated paths in `KSEEK_ROOT` (e.g. `~/Projects:~/Documents`). **Note:** Specifying custom search roots replaces the default `$HOME` root rather than appending to it. If you wish to search your home directory alongside other paths, explicitly include `~` (e.g. `~:/media/data`).
+- **`FZF_DEFAULT_COMMAND` does not apply.** `kseek` streams paths from `fd` directly into `fzf` via standard input (`fd | fzf`). Because `fzf` only evaluates `FZF_DEFAULT_COMMAND` when run interactively without input on `stdin`, setting `FZF_DEFAULT_COMMAND` has no effect in KRunner. Configure traversal flags or exclusions via `KSEEK_FD_ARGS` instead.
+- **How `max-results` works.** `KSEEK_MAX_RESULTS` limits the number of matches returned to KRunner and displayed in the UI. This limit is applied in memory *after* the `fzf` pipeline returns all matching results. It does not terminate `fd` or `fzf` early and does not reduce memory or CPU consumption of the search pipeline. If you need to restrict search scope for performance, use options like `--max-depth` or `--exclude` in `KSEEK_FD_ARGS`.
 - **Extra arguments.** Pass additional flags through `KSEEK_FD_ARGS` and `KSEEK_FZF_ARGS`. Quoting with single quotes, double quotes, and backslash escapes is supported.
 
 ## Configuration
@@ -128,8 +134,8 @@ systemctl --user restart plasma-runner-kseek.service
 | Variable | Default | Description |
 | :--- | :--- | :--- |
 | `KSEEK_PREFIX` | `f` | Trigger prefix for queries, such as `f`, `find`, or `?`. Set to `""` or `none` for prefixless search. |
-| `KSEEK_ROOT` | `$HOME` | Root directory for file searches. Supports colon-separated lists for multiple roots (e.g. `~/Projects:~/Documents` or `/dir1:/dir2`). |
-| `KSEEK_MAX_RESULTS` | `20` | Maximum number of results returned. |
+| `KSEEK_ROOT` | `$HOME` | Root directory for file searches. Replaces the default root; supports colon-separated lists for multiple roots (e.g. `~:/media/data`). |
+| `KSEEK_MAX_RESULTS` | `20` | Maximum number of results displayed in KRunner. Sliced after the fzf pipeline completes; does not reduce pipeline execution time or memory. |
 | `KSEEK_TIMEOUT` | `2.5` | Search timeout in seconds. |
 | `KSEEK_DEBOUNCE` | `75` | Search debounce in milliseconds. Set to `0` to disable. |
 | `KSEEK_FD_ARGS` | `""` | Extra arguments passed to `fd`, for example `'--exclude "My Documents" --hidden'`. |

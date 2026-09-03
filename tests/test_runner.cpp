@@ -49,6 +49,7 @@ private slots:
     void testEdgeCasePipelineDelimitation_data();
     void testEdgeCaseConfigCombinations();
     void testCoreParsingEdgeCases();
+    void testDisplayPathTilde();
 
 private:
     std::unique_ptr<QTemporaryDir> m_tempDir;
@@ -155,7 +156,10 @@ void TestRunner::testPrefixConfiguration() {
     QCOMPARE(term, QStringLiteral("test"));
 
     QVERIFY(runner.parseQuery(QStringLiteral("f   spaced query  "), term));
-    QCOMPARE(term, QStringLiteral("spaced query"));
+    QCOMPARE(term, QStringLiteral("spaced query  "));
+
+    QVERIFY(runner.parseQuery(QStringLiteral("f query with trailing "), term));
+    QCOMPARE(term, QStringLiteral("query with trailing "));
 
     QVERIFY(!runner.parseQuery(QStringLiteral("firefox"), term));
     QVERIFY(!runner.parseQuery(QStringLiteral("find test"), term));
@@ -196,7 +200,7 @@ void TestRunner::testPrefixConfiguration() {
     QVERIFY(runner.parseQuery(QStringLiteral("resume"), term));
     QCOMPARE(term, QStringLiteral("resume"));
     QVERIFY(runner.parseQuery(QStringLiteral("  spaced query  "), term));
-    QCOMPARE(term, QStringLiteral("spaced query"));
+    QCOMPARE(term, QStringLiteral("  spaced query  "));
     QVERIFY(!runner.parseQuery(QStringLiteral(""), term));
     QVERIFY(!runner.parseQuery(QStringLiteral("   "), term));
 
@@ -973,7 +977,7 @@ void TestRunner::testSpecificMultiRootsFedowinAndHome() {
             QVERIFY(!match.id.isEmpty());
             QCOMPARE(match.id, homeSample);
             QCOMPARE(match.text, QStringLiteral("Projects"));
-            QCOMPARE(match.properties.value(QStringLiteral("subtext")).toString(), homeSample);
+            QCOMPARE(match.properties.value(QStringLiteral("subtext")).toString(), QStringLiteral("~/Projects"));
         }
     }
 }
@@ -1110,7 +1114,24 @@ void TestRunner::testEdgeCaseMatchConstruction() {
     QVERIFY2(!m.id.isEmpty(), qPrintable(QStringLiteral("Failed to build match for: %1").arg(relPath)));
     QCOMPARE(m.id, fullPath);
     QCOMPARE(m.text, expectedLeafText);
-    QCOMPARE(m.properties.value(QStringLiteral("subtext")).toString(), fullPath);
+
+    QString expectedSubtext = fullPath;
+    const QString home = QDir::homePath();
+    if (expectedSubtext == home) {
+        expectedSubtext = QStringLiteral("~");
+    } else if (expectedSubtext.startsWith(home + u'/')) {
+        expectedSubtext = QStringLiteral("~") + expectedSubtext.sliced(home.size());
+    } else {
+        const QString canonicalHome = QFileInfo(home).canonicalFilePath();
+        if (!canonicalHome.isEmpty() && canonicalHome != home) {
+            if (expectedSubtext == canonicalHome) {
+                expectedSubtext = QStringLiteral("~");
+            } else if (expectedSubtext.startsWith(canonicalHome + u'/')) {
+                expectedSubtext = QStringLiteral("~") + expectedSubtext.sliced(canonicalHome.size());
+            }
+        }
+    }
+    QCOMPARE(m.properties.value(QStringLiteral("subtext")).toString(), expectedSubtext);
 
     const QStringList urls = m.properties.value(QStringLiteral("urls")).toStringList();
     QCOMPARE(urls.size(), 1);
@@ -1437,6 +1458,42 @@ void TestRunner::testCoreParsingEdgeCases() {
         QCOMPARE(parsedMixed.size(), 1);
         QCOMPARE(parsedMixed.first(), home);
     }
+}
+
+void TestRunner::testDisplayPathTilde() {
+    const QString home = QDir::homePath();
+    KSeekRunner runner(home);
+
+    const QString subDir = home + QStringLiteral("/.test_kseek_tilde");
+    QDir(home).mkpath(QStringLiteral(".test_kseek_tilde"));
+    const QString filePath = subDir + QStringLiteral("/sample.txt");
+    QFile f(filePath);
+    if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        f.write("test");
+        f.close();
+
+        RemoteMatch match = runner.buildMatch(filePath, 0, 1);
+        QVERIFY(!match.id.isEmpty());
+        QCOMPARE(match.id, filePath);
+        QCOMPARE(match.properties.value(QStringLiteral("subtext")).toString(), QStringLiteral("~/.test_kseek_tilde/sample.txt"));
+        QCOMPARE(match.properties.value(QStringLiteral("urls")).toStringList().first(), QUrl::fromLocalFile(filePath).toString());
+
+        f.remove();
+        QDir(home).rmdir(QStringLiteral(".test_kseek_tilde"));
+    }
+
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString tempFile = temp.filePath(QStringLiteral("external.txt"));
+    QFile f2(tempFile);
+    QVERIFY(f2.open(QIODevice::WriteOnly));
+    f2.write("external");
+    f2.close();
+
+    KSeekRunner runnerTemp(temp.path());
+    RemoteMatch matchTemp = runnerTemp.buildMatch(tempFile, 0, 1);
+    QVERIFY(!matchTemp.id.isEmpty());
+    QCOMPARE(matchTemp.properties.value(QStringLiteral("subtext")).toString(), tempFile);
 }
 
 QTEST_GUILESS_MAIN(TestRunner)
