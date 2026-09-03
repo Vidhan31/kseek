@@ -123,9 +123,7 @@ void ProcessPipeline::detectFzfFeatures() {
         const QString out = QString::fromUtf8(fzfHelp.readAllStandardOutput() + fzfHelp.readAllStandardError());
         m_features.read0 = out.contains(QLatin1StringView("--read0"));
         m_features.print0 = out.contains(QLatin1StringView("--print0"));
-        m_features.schemePath = out.contains(QLatin1StringView("--scheme"));
-        m_features.algoV2 = out.contains(QLatin1StringView("--algo"));
-        m_features.tiebreak = out.contains(QLatin1StringView("--tiebreak"));
+        m_features.noPrintQuery = out.contains(QLatin1StringView("--print-query"));
     }
 }
 
@@ -182,14 +180,8 @@ void ProcessPipeline::startSearch(quint64 requestId,
     if (m_useNullIo) {
         fzfArgs << QStringLiteral("--read0") << QStringLiteral("--print0");
     }
-    if (m_features.schemePath) {
-        fzfArgs << QStringLiteral("--scheme=path");
-    }
-    if (m_features.algoV2) {
-        fzfArgs << QStringLiteral("--algo=v2");
-    }
-    if (m_features.tiebreak) {
-        fzfArgs << QStringLiteral("--tiebreak=length,begin,index");
+    if (m_features.noPrintQuery) {
+        fzfArgs << QStringLiteral("--no-print-query");
     }
     if (!extraFzfArgs.isEmpty()) {
         fzfArgs.append(extraFzfArgs);
@@ -201,13 +193,6 @@ void ProcessPipeline::startSearch(quint64 requestId,
     const QString workingDir = validRoots.first();
     m_fdProc->setWorkingDirectory(workingDir);
     m_fzfProc->setWorkingDirectory(workingDir);
-
-    // Sanitize fzf environment from user shell terminal options
-    QProcessEnvironment fzfEnv = QProcessEnvironment::systemEnvironment();
-    fzfEnv.remove(QStringLiteral("FZF_DEFAULT_OPTS"));
-    fzfEnv.remove(QStringLiteral("FZF_DEFAULT_COMMAND"));
-    fzfEnv.remove(QStringLiteral("FZF_DEFAULT_OPTS_FILE"));
-    m_fzfProc->setProcessEnvironment(fzfEnv);
 
     auto childModifier = []() {
         ::setpgid(0, 0);

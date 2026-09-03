@@ -14,9 +14,7 @@ struct FdFeatures {
 struct FzfFeatures {
     bool read0 = false;
     bool print0 = false;
-    bool schemePath = false;
-    bool algoV2 = false;
-    bool tiebreak = false;
+    bool noPrintQuery = false;
 };
 
 class ProcessPipeline : public QObject {

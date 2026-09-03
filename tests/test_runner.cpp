@@ -528,27 +528,72 @@ void TestRunner::testFzfEnvIsolation() {
         QSKIP("fd or fzf not installed");
     }
 
-    // Set toxic FZF_DEFAULT_OPTS in environment that would normally break fzf --filter
-    qputenv("FZF_DEFAULT_OPTS", "--color=always --preview 'invalid command'");
+    struct EnvCleaner {
+        ~EnvCleaner() {
+            qunsetenv("FZF_DEFAULT_OPTS");
+            qunsetenv("FZF_DEFAULT_COMMAND");
+        }
+    } cleaner;
+
+    // 1. Verify that presentation and terminal options in FZF_DEFAULT_OPTS do not break --filter
+    qputenv("FZF_DEFAULT_OPTS", "--layout=reverse --border --height=40% --preview 'cat {}'");
     qputenv("FZF_DEFAULT_COMMAND", "false");
 
-    QSignalSpy finishedSpy(&pipeline, &ProcessPipeline::searchFinished);
-    pipeline.startSearch(30, m_testDirPath, QStringLiteral("README"), {}, {}, 20, 2000);
-    QVERIFY(finishedSpy.wait(3000));
-    QCOMPARE(finishedSpy.count(), 1);
+    {
+        QSignalSpy finishedSpy(&pipeline, &ProcessPipeline::searchFinished);
+        pipeline.startSearch(30, m_testDirPath, QStringLiteral("README"), {}, {}, 20, 2000);
+        QVERIFY(finishedSpy.wait(3000));
+        QCOMPARE(finishedSpy.count(), 1);
 
-    const QStringList results = finishedSpy.takeFirst().at(1).toStringList();
-    bool found = false;
-    for (const QString &p : results) {
-        if (p.contains(QLatin1StringView("README.md"))) {
-            found = true;
-            break;
+        const QStringList results = finishedSpy.takeFirst().at(1).toStringList();
+        bool found = false;
+        for (const QString &p : results) {
+            if (p.contains(QLatin1StringView("README.md"))) {
+                found = true;
+                break;
+            }
         }
+        QVERIFY(found);
     }
-    QVERIFY(found);
 
-    qunsetenv("FZF_DEFAULT_OPTS");
-    qunsetenv("FZF_DEFAULT_COMMAND");
+    // 2. Verify that --print-query in FZF_DEFAULT_OPTS is neutralized by --no-print-query
+    qputenv("FZF_DEFAULT_OPTS", "--print-query");
+    {
+        QSignalSpy finishedSpy(&pipeline, &ProcessPipeline::searchFinished);
+        pipeline.startSearch(31, m_testDirPath, QStringLiteral("README"), {}, {}, 20, 2000);
+        QVERIFY(finishedSpy.wait(3000));
+        QCOMPARE(finishedSpy.count(), 1);
+
+        const QStringList results = finishedSpy.takeFirst().at(1).toStringList();
+        QVERIFY(!results.contains(QStringLiteral("README")));
+        bool found = false;
+        for (const QString &p : results) {
+            if (p.contains(QLatin1StringView("README.md"))) {
+                found = true;
+                break;
+            }
+        }
+        QVERIFY(found);
+    }
+
+    // 3. Verify that user matching options in FZF_DEFAULT_OPTS (e.g. --exact) are respected
+    qputenv("FZF_DEFAULT_OPTS", "--exact");
+    {
+        QSignalSpy finishedSpy(&pipeline, &ProcessPipeline::searchFinished);
+        pipeline.startSearch(32, m_testDirPath, QStringLiteral("rdm"), {}, {}, 20, 2000);
+        QVERIFY(finishedSpy.wait(3000));
+        QCOMPARE(finishedSpy.count(), 1);
+
+        const QStringList results = finishedSpy.takeFirst().at(1).toStringList();
+        bool found = false;
+        for (const QString &p : results) {
+            if (p.contains(QLatin1StringView("README.md"))) {
+                found = true;
+                break;
+            }
+        }
+        QVERIFY(!found);
+    }
 }
 
 void TestRunner::testFzfCustomArgs() {
@@ -1405,7 +1450,7 @@ void TestRunner::testEdgeCaseConfigCombinations() {
         QCOMPARE(runner.searchRoots().size(), 2);
 
         QSignalSpy finishedSpy(&pipeline, &ProcessPipeline::searchFinished);
-        pipeline.startSearch(210, multiRoots, QStringLiteral("inner file"), {}, {}, 20, 2500);
+        pipeline.startSearch(210, multiRoots, QStringLiteral("inner file with space"), {}, {}, 20, 2500);
         QVERIFY(finishedSpy.wait(3000));
         const QStringList results = finishedSpy.takeFirst().at(1).toStringList();
         QVERIFY(!results.isEmpty());
