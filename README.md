@@ -17,6 +17,9 @@ https://github.com/user-attachments/assets/c71b2907-5e37-449d-8100-d00c71dba510
 f resume pdf
 ```
 
+> [!TIP]
+> Check for updates periodically in **System Settings** > **Search** > **Plasma Search** > **Get New Plugins...** to receive bug fixes and feature updates.
+
 ## Features
 
 - **Instant on-demand search.** Searches execute only when you query KRunner. There are no background file watchers, no periodic crawlers, and no indexing processes writing to disk.
@@ -45,7 +48,10 @@ f config.json
 
 `kseek` does not implement a custom search language. Filesystem traversal and filtering are handled by `fd`, while query matching and ranking are handled by `fzf`. All standard search syntax from both tools applies directly.
 
-You can customize behavior by passing arguments through `KSEEK_FD_ARGS` and `KSEEK_FZF_ARGS`. Refer to the official [fd documentation](https://github.com/sharkdp/fd#readme) and [fzf documentation](https://github.com/junegunn/fzf#search-syntax) for detailed search syntax, matching patterns, and configuration options.
+Customize behavior by passing arguments in `kseek.conf` (`fd_args`, `fzf_args`), through environment variables (`KSEEK_FD_ARGS`, `KSEEK_FZF_ARGS`), or via CLI options (`--fd-args`, `--fzf-args`). Refer to the official [fd documentation](https://github.com/sharkdp/fd#readme) and [fzf documentation](https://github.com/junegunn/fzf#search-syntax) for detailed search syntax and matching patterns.
+
+> [!TIP]
+> **Prevent search clutter:** Searching broad directories like `$HOME` can return excessive results if deep build trees or cache directories are included. Follow the [fd documentation on ignore files](https://github.com/sharkdp/fd#excluding-specific-files-or-directories) to exclude unwanted folders using `.ignore`, `.fdignore`, or global ignore files (`~/.config/fd/ignore`), and configure `fzf` options to refine query matching.
 
 ### Available actions
 
@@ -59,113 +65,100 @@ Highlight a match and press `Tab` or click the action button to access:
 
 ## Configuration
 
-Configure `kseek` with environment variables or command-line flags.
+Configure `kseek` through a configuration file, environment variables, or command-line flags. Settings resolve in this order:
 
-System package installations create an empty configuration file at:
+1. Built-in defaults
+2. User configuration file (`~/.config/kseek/kseek.conf`)
+3. Environment variables (`KSEEK_*`)
+4. Command-line flags (`--prefix`, `--root`, etc.)
+
+Create or edit your user configuration at:
 
 ```text
-/usr/lib/environment.d/kseek.conf
+~/.config/kseek/kseek.conf
 ```
 
-For user configuration, create or edit:
+Default configuration (`~/.config/kseek/kseek.conf`):
 
-```text
-~/.config/environment.d/kseek.conf
+```ini
+[General]
+# Trigger prefix for queries in KRunner (default: f, set to "" or none for prefixless)
+# prefix = f
+
+# Search root directories (default: $HOME)
+root = ~
+
+# Maximum results returned to KRunner (default: 20)
+# max_results = 20
+
+# Query timeout in seconds (default: 2.5)
+# timeout = 2.5
+
+# Search debounce delay in milliseconds (default: 75)
+# debounce = 75
+
+# Extra arguments passed to fd
+# fd_args = --hidden
+
+# Extra arguments passed to fzf
+fzf_args = --scheme=path
+
+# Custom binary paths (if installed outside PATH)
+# fd_bin = /usr/bin/fd
+# fzf_bin = /usr/bin/fzf
+
+# Enable verbose debug logging
+# debug = false
 ```
 
-Example configuration:
+After editing `kseek.conf`, reload settings immediately via D-Bus:
 
 ```bash
-KSEEK_PREFIX="f"
-KSEEK_ROOT="$HOME/Projects:$HOME/Documents"
-KSEEK_MAX_RESULTS="30"
-KSEEK_FD_ARGS='--hidden --exclude "node_modules"'
-KSEEK_FZF_ARGS='--exact'
+qdbus org.kde.krunner.kseek /kseek org.kde.krunner1.Config
 ```
 
-After editing `kseek.conf`, terminate any running instance and reload KRunner:
+Alternatively, terminate the running instance so D-Bus restarts it on your next search:
 
 ```bash
 pkill -x kseek
-kquitapp6 krunner
 ```
 
-### Configuration recipes
+### Configuration reference
 
-Common setups for `~/.config/environment.d/kseek.conf`:
+| Setting (`kseek.conf`) | CLI Option | Environment Variable | Default | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `prefix` | `-p, --prefix` | `KSEEK_PREFIX` | `f` | Trigger prefix for queries in KRunner. Set to `""` or `none` for prefixless queries. |
+| `root` | `-r, --root` | `KSEEK_ROOT` | `~` (`$HOME`) | Search root directories, separated by colons (e.g. `~/Projects:~/Documents`). |
+| `max_results` | `-m, --max-results` | `KSEEK_MAX_RESULTS` | `20` | Maximum results returned to KRunner. |
+| `timeout` | `-t, --timeout` | `KSEEK_TIMEOUT` | `2.5` | Maximum search execution time in seconds. |
+| `debounce` | `-d, --debounce` | `KSEEK_DEBOUNCE` | `75` | Delay in milliseconds before launching a search after query changes. |
+| `fd_args` | `--fd-args` | `KSEEK_FD_ARGS` | `""` | Extra arguments passed to `fd` (e.g. `--hidden --follow`). |
+| `fzf_args` | `--fzf-args` | `KSEEK_FZF_ARGS` | `--scheme=path` in `kseek.conf` (`""` if unset) | Extra arguments passed to `fzf` (e.g. `--scheme=path --exact`). |
+| `fd_bin` | `--fd-bin` | `KSEEK_FD_BIN` | auto-detected | Path to the `fd` or `fdfind` executable. |
+| `fzf_bin` | `--fzf-bin` | `KSEEK_FZF_BIN` | auto-detected | Path to the `fzf` executable. |
+| `debug` | `--debug` | `KSEEK_DEBUG` | `false` | Enable verbose debug logging to stderr. |
+| — | `-c, --config` | — | `~/.config/kseek/kseek.conf` | Path to custom configuration file. |
+| — | `--replace` | — | — | Replace an already running instance on D-Bus. |
+| — | — | `TERMINAL` | auto-detected | Terminal binary used by the **Open terminal here** action. |
 
-#### Prefixless search
+### Custom binary paths
 
-Search files directly in KRunner without typing `f`:
+If you installed `fd` or `fzf` outside standard system paths, set their paths in `~/.config/kseek/kseek.conf`:
+
+```ini
+fd_bin = ~/.cargo/bin/fd
+fzf_bin = ~/.local/bin/fzf
+```
+
+### Preferred terminal emulator
+
+Override the default terminal used by the **Open terminal here** action by exporting `$TERMINAL` in your environment:
 
 ```bash
-KSEEK_PREFIX=""
+export TERMINAL="ghostty"
 ```
 
-You can also set `KSEEK_PREFIX="none"` or use another prefix like `find` or `?`.
-
-#### Search multiple drives and folders
-
-Search across multiple folders or external drives using colon-separated paths:
-
-```bash
-KSEEK_ROOT="$HOME/Projects:$HOME/Documents:/mnt/data"
-```
-
-Setting custom roots replaces the default `$HOME` search root. Include `$HOME` explicitly if you want it included alongside other paths.
-
-#### Search hidden files and follow symlinks
-
-Pass flags to `fd` through `KSEEK_FD_ARGS`:
-
-```bash
-KSEEK_FD_ARGS="--hidden --follow"
-```
-
-#### Exclude specific directories
-
-Keep search fast by skipping large build or cache folders:
-
-```bash
-KSEEK_FD_ARGS='--exclude "node_modules" --exclude "target" --exclude ".git" --exclude ".cache"'
-```
-
-> [!TIP]
-> Instead of setting `KSEEK_FD_ARGS`, you can use `fd` ignore files such as `.ignore` or `.fdignore` in your project or home directory. `fd` respects these automatically.
-
-#### Exact matching by default
-
-Turn off fuzzy matching and require exact substring matches:
-
-```bash
-KSEEK_FZF_ARGS="--exact"
-```
-
-#### Select preferred terminal emulator
-
-Override the default terminal used by the **Open terminal here** action:
-
-```bash
-TERMINAL="ghostty"
-```
-
-Supported options include `alacritty`, `kitty`, `foot`, `konsole`, `wezterm`, and any standard terminal that accepts `--working-directory` or `-e`.
-
-### Environment variables
-
-| Variable | Default | Description |
-| :--- | :--- | :--- |
-| `KSEEK_PREFIX` | `f` | Trigger prefix for queries in KRunner. Set to `""` or `none` for prefixless queries. |
-| `KSEEK_ROOT` | `$HOME` | Search root directories, separated by colons. Replaces `$HOME`. |
-| `KSEEK_MAX_RESULTS` | `20` | Maximum results returned to KRunner. Applied after pipeline matching. |
-| `KSEEK_TIMEOUT` | `2.5` | Maximum search execution time in seconds. |
-| `KSEEK_DEBOUNCE` | `75` | Delay before launching search after query changes, in milliseconds. Set to `0` to disable. |
-| `KSEEK_FD_ARGS` | `""` | Extra arguments passed to `fd`. |
-| `KSEEK_FZF_ARGS` | `""` | Extra arguments passed to `fzf`. |
-| `KSEEK_FD_BIN` | auto-detected | Path to the `fd` or `fdfind` executable. |
-| `KSEEK_FZF_BIN` | auto-detected | Path to the `fzf` executable. |
-| `TERMINAL` | auto-detected | Terminal emulator binary for the **Open terminal here** action. |
-| `KSEEK_DEBUG` | `0` | Set to `1` to enable verbose debug logging to stderr. |
+Supported options include `ghostty`, `alacritty`, `kitty`, `foot`, `konsole`, `ptyxis`, `wezterm`, and any standard terminal that accepts `--working-directory` or `-e`.
 
 ## Performance
 
@@ -182,6 +175,9 @@ You can install `kseek` directly from the Plasma desktop interface:
 3. Search for **kseek** and click **Install**.
 
 You can also browse or download the package directly from [store.kde.org](https://store.kde.org).
+
+> [!TIP]
+> Check for updates periodically in **System Settings** > **Search** > **Plasma Search** > **Get New Plugins...** to receive bug fixes and feature updates.
 
 ### Distribution Packages
 
@@ -218,11 +214,11 @@ If you install via the **KDE Store**, install the dependencies using your packag
 
 ### Custom binary installations
 
-If you installed `fd` or `fzf` outside your system package manager (for example, via Cargo), set their paths in `~/.config/environment.d/kseek.conf`:
+If you installed `fd` or `fzf` outside your system package manager (for example, via Cargo), set their paths in `~/.config/kseek/kseek.conf`:
 
-```bash
-KSEEK_FD_BIN="$HOME/.cargo/bin/fd"
-KSEEK_FZF_BIN="$HOME/.local/bin/fzf"
+```ini
+fd_bin = ~/.cargo/bin/fd
+fzf_bin = ~/.local/bin/fzf
 ```
 
 To install packages without pulling distribution package dependencies:
@@ -258,6 +254,7 @@ Usage: kseek [options]
 Options:
   -h, --help                 Displays help on commandline options.
   -v, --version              Displays version information.
+  -c, --config <path>        Path to configuration file (default: ~/.config/kseek/kseek.conf).
   -p, --prefix <prefix>      Trigger prefix for queries (default: 'f', use '' or 'none' for prefixless).
   -r, --root <path>          Root directory to search (can be specified multiple times or colon-separated, default: $HOME).
   -m, --max-results <count>  Maximum results returned (default: 20).
@@ -295,6 +292,8 @@ Build and install `kseek` into `~/.local` without `sudo`:
 # Build and install locally, running test suite first
 ./scripts/install-dev.sh --test
 ```
+
+The script copies [`kseek.conf`](kseek.conf) to `~/.config/kseek/kseek.conf` if no user configuration exists.
 
 To remove development files:
 

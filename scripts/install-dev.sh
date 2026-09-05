@@ -49,7 +49,7 @@ Options:
   -B, --build-dir <DIR>    Build directory (default: <repo-root>/build)
   -c, --clean              Clean build directory before configuring
   -t, --test               Run test suite (ctest) before installing
-  --no-restart             Do not restart KRunner or reload systemd user services
+  --no-restart             Do not restart KRunner
   -h, --help               Display this help message
 
 Examples:
@@ -158,12 +158,48 @@ log_info "Installing kseek to ${PREFIX}..."
 cmake --install "$BUILD_DIR" --prefix "$PREFIX"
 
 # Ensure user configuration file exists
-USER_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/environment.d"
+USER_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/kseek"
 USER_CONFIG_FILE="${USER_CONFIG_DIR}/kseek.conf"
 if [[ ! -f "$USER_CONFIG_FILE" ]]; then
-    log_info "Creating empty user configuration at ${USER_CONFIG_FILE}..."
+    log_info "Creating user configuration template at ${USER_CONFIG_FILE}..."
     mkdir -p "$USER_CONFIG_DIR"
-    touch "$USER_CONFIG_FILE"
+    if [[ -f "${REPO_ROOT}/kseek.conf" ]]; then
+        cp "${REPO_ROOT}/kseek.conf" "$USER_CONFIG_FILE"
+    else
+        cat <<'EOF' > "$USER_CONFIG_FILE"
+# kseek configuration file (~/.config/kseek/kseek.conf)
+# For documentation, see https://github.com/vidhan31/kseek
+
+[General]
+# Trigger prefix for queries in KRunner (default: f, set to "" or none for prefixless)
+# prefix = f
+
+# Search root directories (default: $HOME)
+root = ~
+
+# Maximum results returned to KRunner (default: 20)
+# max_results = 20
+
+# Query timeout in seconds (default: 2.5)
+# timeout = 2.5
+
+# Search debounce delay in milliseconds (default: 75)
+# debounce = 75
+
+# Extra arguments passed to fd
+# fd_args = --hidden
+
+# Extra arguments passed to fzf
+fzf_args = --scheme=path
+
+# Custom binary paths (if installed outside PATH)
+# fd_bin = /usr/bin/fd
+# fzf_bin = /usr/bin/fzf
+
+# Enable verbose debug logging
+# debug = false
+EOF
+    fi
 fi
 
 # 6. Service reload and session refresh
@@ -172,7 +208,6 @@ if [[ "$RESTART_SERVICES" -eq 1 ]]; then
 
     # Terminate any existing running instance
     pkill -x kseek 2>/dev/null || true
-    pkill -f "kseek.py" 2>/dev/null || true
 
     # Update KDE Sycoca service cache so KRunner picks up new desktop entry
     if command -v kbuildsycoca6 >/dev/null 2>&1; then

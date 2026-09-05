@@ -10,6 +10,7 @@ QStringList parseSearchRoots(const QStringList &inputs);
 QStringList parseSearchRoots(const QString &input);
 
 struct KSeekConfig {
+    QString configFilePath;
     QString prefix = QStringLiteral("f");
     QStringList searchRoots;
     int maxResults = 20;
@@ -24,6 +25,12 @@ struct KSeekConfig {
 
     QString searchRoot() const { return searchRoots.isEmpty() ? QString() : searchRoots.first(); }
 
+    static QString defaultUserConfigPath();
+
+    bool loadFromFile(const QString &filePath = QString());
+    void loadEnvironment();
+
+    static KSeekConfig load(const QString &configFilePath = QString());
     static KSeekConfig loadFromEnvironment();
     void applyCommandLine(const QCommandLineParser &parser);
 };

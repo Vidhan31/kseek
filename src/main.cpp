@@ -3,11 +3,6 @@
 #include <QCommandLineOption>
 #include <QSocketNotifier>
 #include <QLoggingCategory>
-#include <QDir>
-#include <QFile>
-#include <QFileInfo>
-#include <QProcess>
-#include <QStandardPaths>
 #include <QtDBus/QDBusConnection>
 #include <QtDBus/QDBusConnectionInterface>
 #include <QtDBus/QDBusError>
@@ -29,83 +24,10 @@ static void signalHandler(int /*sig*/) {
     [[maybe_unused]] auto res = ::write(sigFd[0], &a, sizeof(a));
 }
 
-static void cleanupLegacyInstallations() {
-    const QString dataHome = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
-    const QString configHome = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
-
-    const QStringList legacyFiles = {
-        configHome + QStringLiteral("/systemd/user/plasma-runner-kseek.service"),
-        dataHome + QStringLiteral("/systemd/user/plasma-runner-kseek.service"),
-        configHome + QStringLiteral("/systemd/user/plasma-runner-fzf-fd.service"),
-        dataHome + QStringLiteral("/systemd/user/plasma-runner-fzf-fd.service"),
-        dataHome + QStringLiteral("/krunner/dbusplugins/plasma-runner-fzf-fd.desktop"),
-        dataHome + QStringLiteral("/dbus-1/services/org.kde.krunner.fzf_fd.service"),
-    };
-
-    const QStringList legacyDirs = {
-        dataHome + QStringLiteral("/kseek"),            // Old Python install directory (~/.local/share/kseek/kseek.py)
-        dataHome + QStringLiteral("/krunner-fzf-fd"),    // Predecessor directory
-    };
-
-    bool foundLegacy = false;
-    for (const auto &f : legacyFiles) {
-        if (QFile::exists(f)) {
-            foundLegacy = true;
-            break;
-        }
-    }
-    if (!foundLegacy) {
-        for (const auto &d : legacyDirs) {
-            if (QDir(d).exists()) {
-                foundLegacy = true;
-                break;
-            }
-        }
-    }
-
-    if (!foundLegacy) {
-        return;
-    }
-
-    qCInfo(lcMain) << "Detected legacy Python/systemd installation artifacts. Cleaning up for a fresh start...";
-
-    // Stop and disable legacy systemd service if active
-    QProcess::execute(QStringLiteral("systemctl"), {QStringLiteral("--user"), QStringLiteral("stop"), QStringLiteral("plasma-runner-kseek.service")});
-    QProcess::execute(QStringLiteral("systemctl"), {QStringLiteral("--user"), QStringLiteral("disable"), QStringLiteral("plasma-runner-kseek.service")});
-
-    // Terminate any running Python kseek processes
-    QProcess::execute(QStringLiteral("pkill"), {QStringLiteral("-f"), QStringLiteral("kseek.py")});
-
-    // Delete legacy files
-    for (const auto &f : legacyFiles) {
-        if (QFile::exists(f)) {
-            if (QFile::remove(f)) {
-                qCInfo(lcMain) << "Removed legacy file:" << f;
-            }
-        }
-    }
-
-    // Delete legacy directories
-    for (const auto &d : legacyDirs) {
-        QDir dir(d);
-        if (dir.exists()) {
-            if (dir.removeRecursively()) {
-                qCInfo(lcMain) << "Removed legacy directory:" << d;
-            }
-        }
-    }
-
-    // Reload systemd user daemon so it clears stale unit definitions
-    QProcess::execute(QStringLiteral("systemctl"), {QStringLiteral("--user"), QStringLiteral("daemon-reload")});
-    QProcess::execute(QStringLiteral("systemctl"), {QStringLiteral("--user"), QStringLiteral("reset-failed")});
-}
-
 int main(int argc, char *argv[]) {
     QCoreApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("kseek"));
     app.setApplicationVersion(QStringLiteral(KSEEK_VERSION));
-
-    cleanupLegacyInstallations();
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("Fast fuzzy file search runner for KDE Plasma 6 using fd and fzf"));
@@ -187,9 +109,17 @@ int main(int argc, char *argv[]) {
     );
     parser.addOption(debugOpt);
 
+    QCommandLineOption configOpt(
+        QStringList{QStringLiteral("c"), QStringLiteral("config")},
+        QStringLiteral("Path to configuration file (default: ~/.config/kseek/kseek.conf)."),
+        QStringLiteral("path")
+    );
+    parser.addOption(configOpt);
+
     parser.process(app);
 
-    KSeekConfig config = KSeekConfig::loadFromEnvironment();
+    const QString configPath = parser.isSet(configOpt) ? parser.value(configOpt) : QString();
+    KSeekConfig config = KSeekConfig::load(configPath);
     config.applyCommandLine(parser);
 
     if (!config.debug && qEnvironmentVariableIsEmpty("QT_LOGGING_RULES")) {

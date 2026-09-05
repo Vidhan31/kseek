@@ -78,39 +78,20 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-log_info "Stopping kseek services and processes..."
-
-# Stop and disable systemd service if lingering
-if command -v systemctl >/dev/null 2>&1; then
-    systemctl --user stop plasma-runner-kseek.service 2>/dev/null || true
-    systemctl --user disable plasma-runner-kseek.service 2>/dev/null || true
-    systemctl --user stop plasma-runner-fzf-fd.service 2>/dev/null || true
-    systemctl --user disable plasma-runner-fzf-fd.service 2>/dev/null || true
-fi
+log_info "Stopping any running kseek process..."
 
 # Terminate any running process
 pkill -x kseek 2>/dev/null || true
-pkill -f "kseek.py" 2>/dev/null || true
 
 # Target files to delete
 FILES=(
     "${PREFIX}/bin/kseek"
     "${PREFIX}/share/krunner/dbusplugins/plasma-runner-kseek.desktop"
     "${PREFIX}/share/dbus-1/services/org.kde.krunner.kseek.service"
-    "${PREFIX}/share/systemd/user/plasma-runner-kseek.service"
-    "${PREFIX}/lib/environment.d/kseek.conf"
-    "${HOME}/.config/systemd/user/plasma-runner-kseek.service"
-    "${HOME}/.local/share/systemd/user/plasma-runner-kseek.service"
-    "${HOME}/.config/systemd/user/plasma-runner-fzf-fd.service"
-    "${HOME}/.local/share/systemd/user/plasma-runner-fzf-fd.service"
-    "${HOME}/.local/share/krunner/dbusplugins/plasma-runner-fzf-fd.desktop"
-    "${HOME}/.local/share/dbus-1/services/org.kde.krunner.fzf_fd.service"
 )
 
-LEGACY_DIRS=(
-    "${HOME}/.local/share/kseek"
-    "${HOME}/.local/share/krunner-fzf-fd"
-)
+USER_CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/kseek/kseek.conf"
+USER_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/kseek"
 
 log_info "Removing installed kseek files from ${PREFIX}..."
 REMOVED_COUNT=0
@@ -122,22 +103,21 @@ for file in "${FILES[@]}"; do
     fi
 done
 
-for dir in "${LEGACY_DIRS[@]}"; do
-    if [[ -d "$dir" ]]; then
-        rm -rf "$dir"
-        echo "  - Removed legacy directory: $dir"
-        REMOVED_COUNT=$((REMOVED_COUNT + 1))
-    fi
-done
-
 # Try removing empty parent directory for krunner plugin if empty
 rmdir "${PREFIX}/share/krunner/dbusplugins" 2>/dev/null || true
 rmdir "${PREFIX}/share/krunner" 2>/dev/null || true
 
+if [[ -f "$USER_CONFIG_FILE" ]]; then
+    rm -f "$USER_CONFIG_FILE"
+    rmdir "$USER_CONFIG_DIR" 2>/dev/null || true
+    echo "  - Removed user configuration: $USER_CONFIG_FILE"
+    REMOVED_COUNT=$((REMOVED_COUNT + 1))
+fi
+
 if [[ "$REMOVED_COUNT" -eq 0 ]]; then
-    log_warn "No installed or legacy files were found under ${PREFIX}."
+    log_warn "No installed files were found under ${PREFIX}."
 else
-    log_success "Removed ${REMOVED_COUNT} file(s) and directory(ies)."
+    log_success "Removed ${REMOVED_COUNT} file(s)."
 fi
 
 # Clean build directory if requested
@@ -147,13 +127,8 @@ if [[ "$CLEAN_BUILD" -eq 1 && -d "$BUILD_DIR" ]]; then
     log_success "Build directory removed."
 fi
 
-# Reload systemd and Plasma caches
-log_info "Refreshing systemd user daemon and Plasma runner cache..."
-
-if command -v systemctl >/dev/null 2>&1; then
-    systemctl --user daemon-reload 2>/dev/null || true
-    systemctl --user reset-failed 2>/dev/null || true
-fi
+# Reload Plasma caches
+log_info "Refreshing Plasma runner cache..."
 
 if command -v kbuildsycoca6 >/dev/null 2>&1; then
     kbuildsycoca6 2>/dev/null || true

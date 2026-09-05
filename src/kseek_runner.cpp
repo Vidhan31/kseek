@@ -339,6 +339,9 @@ void KSeekRunner::teardown() {
 void KSeekRunner::config() {
     m_debounceTimer.stop();
     m_pipeline.cancel();
+    KSeekConfig newCfg = KSeekConfig::load(m_config.configFilePath);
+    applyConfig(newCfg);
+    qCInfo(lcRunner) << "Configuration reloaded from disk";
 }
 
 void KSeekRunner::setActivationToken(const QString &token) {

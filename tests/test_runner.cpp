@@ -50,6 +50,10 @@ private slots:
     void testEdgeCaseConfigCombinations();
     void testCoreParsingEdgeCases();
     void testDisplayPathTilde();
+    void testConfigDefaultUserPath();
+    void testConfigFileParsing();
+    void testConfigPrecedenceFileEnvCli();
+    void testDefaultConfigFileValues();
 
 private:
     std::unique_ptr<QTemporaryDir> m_tempDir;
@@ -1494,6 +1498,100 @@ void TestRunner::testDisplayPathTilde() {
     RemoteMatch matchTemp = runnerTemp.buildMatch(tempFile, 0, 1);
     QVERIFY(!matchTemp.id.isEmpty());
     QCOMPARE(matchTemp.properties.value(QStringLiteral("subtext")).toString(), tempFile);
+}
+
+void TestRunner::testConfigDefaultUserPath() {
+    const QString path = KSeekConfig::defaultUserConfigPath();
+    QVERIFY(!path.isEmpty());
+    QVERIFY(path.endsWith(QStringLiteral("/kseek/kseek.conf")));
+}
+
+void TestRunner::testConfigFileParsing() {
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString configPath = tempDir.filePath(QStringLiteral("kseek.conf"));
+
+    QFile file(configPath);
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+    QTextStream out(&file);
+    out << "# Test configuration file\n";
+    out << "[General]\n";
+    out << "; A comment\n";
+    out << "prefix = find\n";
+    out << "root = " << m_testDirPath << "\n";
+    out << "max_results = 55\n";
+    out << "timeout = 3.5\n";
+    out << "debounce = 120\n";
+    out << "fd_args = '--hidden --follow'\n";
+    out << "fzf_args = \"--exact --cycle\"\n";
+    out << "fd_bin = /usr/bin/fd\n";
+    out << "fzf_bin = /usr/bin/fzf\n";
+    out << "debug = true\n";
+    file.close();
+
+    KSeekConfig cfg;
+    QVERIFY(cfg.loadFromFile(configPath));
+    QCOMPARE(cfg.prefix, QStringLiteral("find"));
+    QCOMPARE(cfg.searchRoots.size(), 1);
+    QCOMPARE(cfg.searchRoots.first(), QFileInfo(m_testDirPath).canonicalFilePath());
+    QCOMPARE(cfg.maxResults, 55);
+    QCOMPARE(cfg.timeoutMs, 3500);
+    QCOMPARE(cfg.debounceMs, 120);
+    QCOMPARE(cfg.extraFdArgs, QStringList({QStringLiteral("--hidden"), QStringLiteral("--follow")}));
+    QCOMPARE(cfg.extraFzfArgs, QStringList({QStringLiteral("--exact"), QStringLiteral("--cycle")}));
+    QCOMPARE(cfg.fdBin, QStringLiteral("/usr/bin/fd"));
+    QCOMPARE(cfg.fzfBin, QStringLiteral("/usr/bin/fzf"));
+    QVERIFY(cfg.debug);
+}
+
+void TestRunner::testConfigPrecedenceFileEnvCli() {
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString configPath = tempDir.filePath(QStringLiteral("kseek.conf"));
+
+    QFile file(configPath);
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+    QTextStream out(&file);
+    out << "prefix = from_file\n";
+    out << "max_results = 30\n";
+    out << "debounce = 50\n";
+    file.close();
+
+    // Environment overrides file
+    qputenv("KSEEK_PREFIX", "from_env");
+    KSeekConfig cfg = KSeekConfig::load(configPath);
+    QCOMPARE(cfg.prefix, QStringLiteral("from_env"));
+    QCOMPARE(cfg.maxResults, 30);
+    QCOMPARE(cfg.debounceMs, 50);
+    qunsetenv("KSEEK_PREFIX");
+
+    // CLI overrides both
+    QCommandLineParser parser;
+    parser.addOption(QCommandLineOption(QStringList{QStringLiteral("p"), QStringLiteral("prefix")}, QString(), QStringLiteral("prefix")));
+    parser.addOption(QCommandLineOption(QStringList{QStringLiteral("m"), QStringLiteral("max-results")}, QString(), QStringLiteral("count")));
+    parser.addOption(QCommandLineOption(QStringList{QStringLiteral("d"), QStringLiteral("debounce")}, QString(), QStringLiteral("ms")));
+
+    QStringList cliArgs = {
+        QStringLiteral("kseek"),
+        QStringLiteral("-m"), QStringLiteral("99")
+    };
+    parser.parse(cliArgs);
+
+    cfg.applyCommandLine(parser);
+    QCOMPARE(cfg.maxResults, 99);
+    QCOMPARE(cfg.debounceMs, 50);
+}
+
+void TestRunner::testDefaultConfigFileValues() {
+    const QString repoConfig = QStringLiteral(KSEEK_SOURCE_DIR "/kseek.conf");
+    QVERIFY(QFile::exists(repoConfig));
+
+    KSeekConfig cfg;
+    QVERIFY(cfg.loadFromFile(repoConfig));
+    QCOMPARE(cfg.extraFzfArgs, QStringList{QStringLiteral("--scheme=path")});
+    const QString canonicalHome = QFileInfo(QDir::homePath()).canonicalFilePath();
+    QCOMPARE(cfg.searchRoots.size(), 1);
+    QCOMPARE(cfg.searchRoots.first(), canonicalHome.isEmpty() ? QDir::homePath() : canonicalHome);
 }
 
 QTEST_GUILESS_MAIN(TestRunner)
