@@ -39,5 +39,5 @@ indexing daemon in the background.
 %{_datadir}/dbus-1/services/org.kde.krunner.kseek.service
 
 %changelog
-* Thu Sep 03 2026 Vidhan Bhatt <heyitsmedevfr@gmail.com> - @VERSION@-1
+* Sat Sep 05 2026 Vidhan Bhatt <heyitsmedevfr@gmail.com> - @VERSION@-1
 - Package build

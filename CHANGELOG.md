@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-05
+
+### Added
+- Direct configuration file loading from `~/.config/kseek/kseek.conf` with INI key-value support.
+- Default `kseek.conf` template pre-configured with `root = ~` and `fzf_args = --scheme=path`.
+- Command-line option `-c, --config <path>` to specify a custom configuration file.
+- Dynamic configuration reload via D-Bus `Config()` call.
+- Declarative KDE Store packaging (`krunner-plugininstaller`) via `package-kdestore.sh`.
+
+### Changed
+- Updated development install and uninstall scripts (`install-dev.sh`, `uninstall-dev.sh`) for the new configuration path.
+- Updated documentation with a configuration reference table and D-Bus reload instructions.
+
+### Removed
+- Legacy Python installation cleanup logic and systemctl invocations from startup.
+- Obsolete `scripts/cleanup-legacy.sh` script.
+- Systemd user service unit and `environment.d` dependency in favor of D-Bus activation.
+
 ## [1.2.1] - 2026-09-03
 
 ### Fixed
@@ -39,7 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Swapped external `head` and `awk` processes for in-process parsing and scoring.
 - Moved packaging files into `packaging/` and service files into `src/`.
 
-[Unreleased]: https://github.com/vidhan31/kseek/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/vidhan31/kseek/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/vidhan31/kseek/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/vidhan31/kseek/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/vidhan31/kseek/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/vidhan31/kseek/compare/v1.0.0...v1.1.0
